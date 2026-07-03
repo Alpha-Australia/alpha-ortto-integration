@@ -1,0 +1,15 @@
+# Normalise line endings for consistency across machines.
+* text=auto eol=lf
+
+# Development and CI files should never appear in a source archive
+# (e.g. GitHub's auto-generated zipball). The release workflow builds the
+# distributable zip; these export-ignore rules keep source exports clean too.
+/.github            export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+/tests              export-ignore
+/composer.json      export-ignore
+/composer.lock      export-ignore
+/phpcs.xml.dist     export-ignore
+/CHANGELOG.md       export-ignore
+/README.md          export-ignore

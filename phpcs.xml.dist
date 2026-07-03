@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<ruleset name="Alpha Ortto Integration">
+	<description>Coding standards for the Alpha Ortto Integration plugin.</description>
+
+	<!-- What to scan -->
+	<file>.</file>
+	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<exclude-pattern>*/node_modules/*</exclude-pattern>
+	<exclude-pattern>*/tests/*</exclude-pattern>
+
+	<!-- Only check PHP files -->
+	<arg name="extensions" value="php"/>
+
+	<!-- Show progress and use colours; -q silences on CI if needed -->
+	<arg value="ps"/>
+	<arg name="colors"/>
+	<arg name="parallel" value="8"/>
+
+	<!-- WordPress standards (coding style + best practices + security) -->
+	<rule ref="WordPress-Extra"/>
+
+	<!-- Text domain check for translatable strings -->
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="alpha-ortto-integration"/>
+			</property>
+		</properties>
+	</rule>
+
+	<!-- Prefix check for globals/functions/hooks -->
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="alpha_ortto"/>
+				<element value="Alpha_Ortto"/>
+				<element value="ALPHA_ORTTO"/>
+			</property>
+		</properties>
+	</rule>
+
+	<!-- Target minimum supported versions -->
+	<config name="minimum_wp_version" value="6.0"/>
+	<config name="testVersion" value="8.2-"/>
+</ruleset>

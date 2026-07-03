@@ -1,0 +1,28 @@
+# Dependencies
+/vendor/
+/node_modules/
+
+# Build artifacts
+*.zip
+*.tar
+*.tar.gz
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.bak
+*.orig
+*.tmp
+
+# Logs
+*.log
+
+# PHPCS / tooling caches
+.phpcs.cache
+.phpunit.result.cache
+
+# IDE
+/.idea/
+/.vscode/

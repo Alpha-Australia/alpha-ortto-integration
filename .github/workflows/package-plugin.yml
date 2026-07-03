@@ -1,0 +1,81 @@
+name: Package WordPress Plugin
+
+# Build a clean plugin zip and attach it to a GitHub release whenever a
+# version tag is pushed (e.g. `git tag v1.1.0 && git push origin v1.1.0`).
+# The plugin's GitHub updater downloads this asset to update WordPress sites.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and Release Plugin
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Guard against the classic release mistake: tagging a new version but
+      # forgetting to bump the version in the code. The GitHub updater keys off
+      # the plugin header version, so a mismatch would break auto-updates.
+      - name: Verify tag matches plugin version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          MAIN=alpha-ortto-integration.php
+
+          HEADER=$(grep -ioP '^\s*\*\s*Version:\s*\K[0-9][0-9A-Za-z.\-]*' "$MAIN" | head -n1)
+          CONST=$(grep -oP "ALPHA_ORTTO_ADDON_VERSION',\s*'\K[0-9][0-9A-Za-z.\-]*" "$MAIN" | head -n1)
+
+          echo "Tag:      $TAG"
+          echo "Header:   $HEADER"
+          echo "Constant: $CONST"
+
+          if [ -z "$HEADER" ] || [ -z "$CONST" ]; then
+            echo "::error::Could not read the version from $MAIN."
+            exit 1
+          fi
+
+          if [ "$TAG" != "$HEADER" ] || [ "$TAG" != "$CONST" ]; then
+            echo "::error::Version mismatch. Tag ($TAG) must match the plugin header ($HEADER) and ALPHA_ORTTO_ADDON_VERSION ($CONST). Bump the version in $MAIN before tagging."
+            exit 1
+          fi
+
+      # The zip's top-level folder MUST match the plugin slug so WordPress
+      # installs/updates it into the correct directory.
+      - name: Prepare clean plugin directory
+        run: |
+          SLUG=alpha-ortto-integration
+          mkdir "$SLUG"
+          rsync -av \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='node_modules' \
+            --exclude='vendor' \
+            --exclude='tests' \
+            --exclude='.DS_Store' \
+            --exclude='.gitignore' \
+            --exclude='.gitattributes' \
+            --exclude='composer.json' \
+            --exclude='composer.lock' \
+            --exclude='phpcs.xml.dist' \
+            --exclude='package.json' \
+            --exclude='package-lock.json' \
+            --exclude="$SLUG" \
+            ./ "$SLUG/"
+
+      - name: Zip plugin
+        run: zip -r alpha-ortto-integration.zip alpha-ortto-integration
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: alpha-ortto-integration.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
