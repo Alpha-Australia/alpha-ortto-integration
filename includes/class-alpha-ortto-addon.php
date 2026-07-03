@@ -37,7 +37,7 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 	 * @return Alpha_Ortto_AddOn
 	 */
 	public static function get_instance() {
-		if ( self::$_instance === null ) {
+		if ( null === self::$_instance ) {
 			self::$_instance = new self();
 		}
 		return self::$_instance;
@@ -63,13 +63,13 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 				'title'  => 'Ortto API Settings',
 				'fields' => array(
 					array(
-						'name'    => 'api_key',
-						'label'   => 'Ortto Private API Key',
-						'type'    => 'text',
-						'class'   => 'large',
-						'encrypt' => true,
+						'name'     => 'api_key',
+						'label'    => 'Ortto Private API Key',
+						'type'     => 'text',
+						'class'    => 'large',
+						'encrypt'  => true,
 						'required' => true,
-						'tooltip' => 'In Ortto, go to Data sources -> your Custom API data source -> Configuration, and copy the Private API key.',
+						'tooltip'  => 'In Ortto, go to Data sources -> your Custom API data source -> Configuration, and copy the Private API key.',
 					),
 					array(
 						'name'    => 'region',

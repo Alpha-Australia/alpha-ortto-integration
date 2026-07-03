@@ -123,7 +123,7 @@ class Alpha_Ortto_Updater {
 		add_filter( 'pre_set_site_transient_update_plugins', array( $this, 'modify_transient' ) );
 		add_filter( 'plugins_api', array( $this, 'plugin_popup' ), 10, 3 );
 		add_filter( 'upgrader_source_selection', array( $this, 'fix_source_dir' ), 10, 4 );
-		add_filter( 'upgrader_pre_download', array( $this, 'pre_download' ), 10, 3 );
+		add_filter( 'upgrader_pre_download', array( $this, 'pre_download' ), 10, 2 );
 
 		// Clear the cached release when this plugin is (re)activated.
 		add_action( 'upgrader_process_complete', array( $this, 'flush_cache' ), 10, 2 );
@@ -312,12 +312,11 @@ class Alpha_Ortto_Updater {
 	/**
 	 * Add the auth token to the download request for private repos.
 	 *
-	 * @param bool        $reply    Whether to bail without returning the package.
-	 * @param string      $package  The package file name or URL.
-	 * @param WP_Upgrader $upgrader The WP_Upgrader instance.
+	 * @param bool   $reply   Whether to bail without returning the package.
+	 * @param string $package The package file name or URL.
 	 * @return bool
 	 */
-	public function pre_download( $reply, $package, $upgrader ) {
+	public function pre_download( $reply, $package ) {
 		if ( $this->authorize_token && false !== strpos( (string) $package, 'github.com' ) ) {
 			add_filter(
 				'http_request_args',

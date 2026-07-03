@@ -25,6 +25,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 define( 'ALPHA_ORTTO_ADDON_VERSION', '1.0.0' );
 
+require_once __DIR__ . '/includes/class-alpha-ortto-addon-bootstrap.php';
+
 add_action( 'gform_loaded', array( 'Alpha_Ortto_AddOn_Bootstrap', 'load' ), 5 );
 
 /**
@@ -50,20 +52,6 @@ function alpha_ortto_init_updater() {
 	}
 
 	$updater->initialize();
-}
-
-class Alpha_Ortto_AddOn_Bootstrap {
-
-	public static function load() {
-
-		if ( ! method_exists( 'GFForms', 'include_feed_addon_framework' ) ) {
-			return;
-		}
-
-		require_once __DIR__ . '/includes/class-alpha-ortto-addon.php';
-
-		GFAddOn::register( 'Alpha_Ortto_AddOn' );
-	}
 }
 
 /**

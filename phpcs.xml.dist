@@ -16,8 +16,20 @@
 	<arg name="colors"/>
 	<arg name="parallel" value="8"/>
 
+	<!-- Fail the build on errors only; warnings are advisory and shouldn't
+	     block a release. Warnings still print in the report. -->
+	<config name="ignore_warnings_on_exit" value="1"/>
+
 	<!-- WordPress standards (coding style + best practices + security) -->
 	<rule ref="WordPress-Extra"/>
+
+	<!-- The Gravity Forms Feed Add-On Framework defines protected properties
+	     with a leading underscore ($_slug, $_version, $_title, ...). We must
+	     match those names when extending it, so allow underscore-prefixed
+	     properties in the add-on class only. -->
+	<rule ref="PSR2.Classes.PropertyDeclaration.Underscore">
+		<exclude-pattern>*/includes/class-alpha-ortto-addon.php</exclude-pattern>
+	</rule>
 
 	<!-- Text domain check for translatable strings -->
 	<rule ref="WordPress.WP.I18n">
