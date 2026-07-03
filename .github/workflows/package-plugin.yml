@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Guard against the classic release mistake: tagging a new version but
       # forgetting to bump the version in the code. The GitHub updater keys off
