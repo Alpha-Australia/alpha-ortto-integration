@@ -34,6 +34,16 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 	private static $_instance = null;
 
 	/**
+	 * Entry meta key under which per-feed send status is stored.
+	 */
+	const STATUS_META_KEY = 'alpha_ortto_status';
+
+	/**
+	 * Nonce action used by the entry-detail Resend button.
+	 */
+	const RESEND_NONCE = 'alpha_ortto_resend';
+
+	/**
 	 * @return Alpha_Ortto_AddOn
 	 */
 	public static function get_instance() {
@@ -41,6 +51,17 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 			self::$_instance = new self();
 		}
 		return self::$_instance;
+	}
+
+	/**
+	 * Wire up admin/AJAX hooks: the entry-detail meta box and the Resend
+	 * AJAX endpoint.
+	 */
+	public function init() {
+		parent::init();
+
+		add_filter( 'gform_entry_detail_meta_boxes', array( $this, 'register_entry_meta_box' ), 10, 3 );
+		add_action( 'wp_ajax_alpha_ortto_resend', array( $this, 'ajax_resend' ) );
 	}
 
 	/**
@@ -173,8 +194,8 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 	// # FEED PROCESSING -------------------------------------------------------------------------
 
 	/**
-	 * Build the Ortto payload from the feed's field mapping and send it to
-	 * Ortto's v1/person/merge endpoint.
+	 * Process a feed on submission: send the entry to Ortto and record the
+	 * outcome against the entry so it can be reviewed (and resent) later.
 	 *
 	 * @param array $feed  The Feed Object currently being processed.
 	 * @param array $entry The Entry Object currently being processed.
@@ -184,12 +205,46 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 	 */
 	public function process_feed( $feed, $entry, $form ) {
 
+		$result = $this->send_to_ortto( $feed, $entry, $form );
+
+		$this->record_feed_status( $entry, $feed, $result );
+
+		if ( ! $result['success'] ) {
+			$this->add_feed_error( $result['message'], $feed, $entry, $form );
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Build the Ortto payload from the feed's field mapping and send it to
+	 * Ortto's v1/person/merge endpoint.
+	 *
+	 * Shared by the on-submission processing and the manual resend so both
+	 * paths behave identically.
+	 *
+	 * @param array $feed  The Feed Object.
+	 * @param array $entry The Entry Object.
+	 * @param array $form  The Form Object.
+	 *
+	 * @return array {
+	 *     @type bool   $success Whether Ortto accepted the request.
+	 *     @type int    $code    HTTP status code (0 if the request never left).
+	 *     @type string $message Human-readable outcome (error detail on failure).
+	 * }
+	 */
+	public function send_to_ortto( $feed, $entry, $form ) {
+
 		$settings = $this->get_plugin_settings();
 		$api_key  = rgar( $settings, 'api_key' );
 
 		if ( empty( $api_key ) ) {
-			$this->add_feed_error( 'Ortto API key is not configured. Go to Forms -> Settings -> Ortto to add it.', $feed, $entry, $form );
-			return false;
+			return array(
+				'success' => false,
+				'code'    => 0,
+				'message' => 'Ortto API key is not configured. Go to Forms -> Settings -> Ortto to add it.',
+			);
 		}
 
 		$mappings = $this->get_generic_map_fields( $feed, 'fieldMap' );
@@ -222,8 +277,11 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 		}
 
 		if ( empty( $fields ) ) {
-			$this->add_feed_error( 'No Ortto fields resolved to a value for this entry; nothing was sent.', $feed, $entry, $form );
-			return false;
+			return array(
+				'success' => false,
+				'code'    => 0,
+				'message' => 'No Ortto fields resolved to a value for this entry; nothing was sent.',
+			);
 		}
 
 		$person = array( 'fields' => $fields );
@@ -266,17 +324,339 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 		);
 
 		if ( is_wp_error( $response ) ) {
-			$this->add_feed_error( 'Ortto request failed: ' . $response->get_error_message(), $feed, $entry, $form );
-			return false;
+			return array(
+				'success' => false,
+				'code'    => 0,
+				'message' => 'Ortto request failed: ' . $response->get_error_message(),
+			);
 		}
 
-		$code = wp_remote_retrieve_response_code( $response );
+		$code = (int) wp_remote_retrieve_response_code( $response );
 
 		if ( $code < 200 || $code >= 300 ) {
-			$this->add_feed_error( 'Ortto returned HTTP ' . $code . ': ' . wp_remote_retrieve_body( $response ), $feed, $entry, $form );
-			return false;
+			return array(
+				'success' => false,
+				'code'    => $code,
+				'message' => 'Ortto returned HTTP ' . $code . ': ' . wp_remote_retrieve_body( $response ),
+			);
 		}
 
-		return true;
+		return array(
+			'success' => true,
+			'code'    => $code,
+			'message' => 'Sent to Ortto (HTTP ' . $code . ').',
+		);
+	}
+
+	/**
+	 * Store the outcome of a send against the entry, keyed by feed id, so the
+	 * entry-detail meta box can show status and offer a resend.
+	 *
+	 * @param array $entry  The Entry Object.
+	 * @param array $feed   The Feed Object.
+	 * @param array $result Result array from send_to_ortto().
+	 */
+	private function record_feed_status( $entry, $feed, $result ) {
+
+		$entry_id = rgar( $entry, 'id' );
+		if ( empty( $entry_id ) ) {
+			return;
+		}
+
+		$statuses = gform_get_meta( $entry_id, self::STATUS_META_KEY );
+		if ( ! is_array( $statuses ) ) {
+			$statuses = array();
+		}
+
+		$statuses[ (string) $feed['id'] ] = array(
+			'status'    => $result['success'] ? 'sent' : 'error',
+			'code'      => isset( $result['code'] ) ? (int) $result['code'] : 0,
+			'message'   => isset( $result['message'] ) ? $result['message'] : '',
+			'timestamp' => time(),
+			'user_id'   => get_current_user_id(),
+		);
+
+		gform_update_meta( $entry_id, self::STATUS_META_KEY, $statuses, rgar( $entry, 'form_id' ) );
+	}
+
+	// # ENTRY DETAIL: STATUS + RESEND -----------------------------------------------------------
+
+	/**
+	 * Return the active Ortto feeds for a form.
+	 *
+	 * @param int $form_id Form id.
+	 *
+	 * @return array
+	 */
+	private function get_active_feeds_for_form( $form_id ) {
+		$feeds = $this->get_feeds( $form_id );
+
+		return array_filter(
+			(array) $feeds,
+			static function ( $feed ) {
+				return ! empty( $feed['is_active'] );
+			}
+		);
+	}
+
+	/**
+	 * Register an "Ortto" meta box on the entry detail page, in the side
+	 * column beneath the Notifications box, showing each feed's send status
+	 * and a Resend button.
+	 *
+	 * @param array $meta_boxes Registered meta boxes.
+	 * @param array $entry      The current Entry Object.
+	 * @param array $form       The current Form Object.
+	 *
+	 * @return array
+	 */
+	public function register_entry_meta_box( $meta_boxes, $entry, $form ) {
+
+		if ( ! $this->current_user_can_any( $this->_capabilities_form_settings ) ) {
+			return $meta_boxes;
+		}
+
+		if ( empty( $this->get_active_feeds_for_form( rgar( $form, 'id' ) ) ) ) {
+			return $meta_boxes;
+		}
+
+		$meta_boxes['alpha_ortto'] = array(
+			'title'         => 'Ortto',
+			'callback'      => array( $this, 'render_entry_meta_box' ),
+			'context'       => 'side',
+			'priority'      => 'low',
+			'callback_args' => array( 'form' => $form ),
+		);
+
+		return $meta_boxes;
+	}
+
+	/**
+	 * Render the Ortto status/resend meta box.
+	 *
+	 * @param array $entry   The Entry Object (passed by do_meta_boxes()).
+	 * @param array $metabox The meta box definition; form is under args/form.
+	 */
+	public function render_entry_meta_box( $entry, $metabox ) {
+
+		$form     = rgars( $metabox, 'args/form' );
+		$entry_id = (int) rgar( $entry, 'id' );
+		$feeds    = $this->get_active_feeds_for_form( rgar( $form, 'id' ) );
+
+		$statuses = gform_get_meta( $entry_id, self::STATUS_META_KEY );
+		if ( ! is_array( $statuses ) ) {
+			$statuses = array();
+		}
+
+		$nonce = wp_create_nonce( self::RESEND_NONCE );
+
+		echo '<div class="alpha-ortto-metabox">';
+
+		foreach ( $feeds as $feed ) {
+			$feed_id = (string) $feed['id'];
+			$name    = rgars( $feed, 'meta/feedName' );
+			if ( '' === $name ) {
+				$name = 'Feed #' . $feed_id;
+			}
+
+			$status = rgar( $statuses, $feed_id );
+
+			echo '<div class="alpha-ortto-feed" style="padding:8px 0;border-bottom:1px solid #f0f0f1;">';
+			echo '<strong>' . esc_html( $name ) . '</strong><br />';
+			echo '<span class="alpha-ortto-status" id="alpha-ortto-status-' . esc_attr( $feed_id ) . '">'
+				. wp_kses_post( $this->format_status_html( $status ) )
+				. '</span>';
+
+			printf(
+				'<p style="margin:8px 0 0;"><button type="button" class="button button-secondary alpha-ortto-resend" data-feed="%1$s" data-entry="%2$d">%3$s</button></p>',
+				esc_attr( $feed_id ),
+				$entry_id,
+				esc_html__( 'Resend to Ortto', 'alpha-ortto-integration' )
+			);
+			echo '</div>';
+		}
+
+		echo '</div>';
+
+		$this->print_resend_script( $nonce );
+	}
+
+	/**
+	 * Build the status line HTML for a feed's last recorded send.
+	 *
+	 * @param array|false $status Recorded status, or false if never sent.
+	 *
+	 * @return string
+	 */
+	private function format_status_html( $status ) {
+
+		if ( empty( $status ) || ! is_array( $status ) ) {
+			return '<span style="color:#646970;">Not yet sent.</span>';
+		}
+
+		$when = ! empty( $status['timestamp'] )
+			? wp_date( 'M j, Y g:i a', (int) $status['timestamp'] )
+			: '';
+
+		if ( 'sent' === rgar( $status, 'status' ) ) {
+			$html = '<span style="color:#008a20;">&#10003; Sent</span>';
+			if ( $when ) {
+				$html .= ' <span style="color:#646970;">on ' . esc_html( $when ) . '</span>';
+			}
+			return $html;
+		}
+
+		$html = '<span style="color:#d63638;">&#10007; Failed</span>';
+		if ( $when ) {
+			$html .= ' <span style="color:#646970;">on ' . esc_html( $when ) . '</span>';
+		}
+		$message = rgar( $status, 'message' );
+		if ( $message ) {
+			$html .= '<br /><span style="color:#646970;font-size:11px;">' . esc_html( $message ) . '</span>';
+		}
+		return $html;
+	}
+
+	/**
+	 * Print the inline script that powers the Resend buttons.
+	 *
+	 * @param string $nonce Resend nonce.
+	 */
+	private function print_resend_script( $nonce ) {
+		?>
+		<script type="text/javascript">
+		( function () {
+			var boxes = document.querySelectorAll( '.alpha-ortto-resend' );
+			boxes.forEach( function ( btn ) {
+				btn.addEventListener( 'click', function () {
+					var feedId  = btn.getAttribute( 'data-feed' );
+					var entryId = btn.getAttribute( 'data-entry' );
+					var status  = document.getElementById( 'alpha-ortto-status-' + feedId );
+
+					btn.disabled = true;
+					var original = btn.textContent;
+					btn.textContent = <?php echo wp_json_encode( __( 'Sending…', 'alpha-ortto-integration' ) ); ?>;
+
+					var body = new URLSearchParams();
+					body.append( 'action', 'alpha_ortto_resend' );
+					body.append( 'nonce', <?php echo wp_json_encode( $nonce ); ?> );
+					body.append( 'entry', entryId );
+					body.append( 'feed', feedId );
+
+					fetch( <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>, {
+						method: 'POST',
+						credentials: 'same-origin',
+						headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+						body: body.toString()
+					} )
+					.then( function ( r ) { return r.json(); } )
+					.then( function ( res ) {
+						if ( res && res.success && res.data && res.data.html ) {
+							if ( status ) { status.innerHTML = res.data.html; }
+						} else {
+							var msg = ( res && res.data && res.data.message ) ? res.data.message : 'Resend failed.';
+							if ( status ) {
+								status.innerHTML = '<span style="color:#d63638;">&#10007; ' + msg.replace( /</g, '&lt;' ) + '</span>';
+							}
+						}
+					} )
+					.catch( function () {
+						if ( status ) {
+							status.innerHTML = '<span style="color:#d63638;">&#10007; Request failed.</span>';
+						}
+					} )
+					.finally( function () {
+						btn.disabled = false;
+						btn.textContent = original;
+					} );
+				} );
+			} );
+		} )();
+		</script>
+		<?php
+	}
+
+	/**
+	 * AJAX handler: manually resend a single feed to Ortto for one entry.
+	 */
+	public function ajax_resend() {
+
+		if ( ! check_ajax_referer( self::RESEND_NONCE, 'nonce', false ) ) {
+			wp_send_json_error( array( 'message' => 'Security check failed. Reload the page and try again.' ), 403 );
+		}
+
+		if ( ! $this->current_user_can_any( $this->_capabilities_form_settings ) ) {
+			wp_send_json_error( array( 'message' => 'You do not have permission to resend to Ortto.' ), 403 );
+		}
+
+		$entry_id = absint( rgpost( 'entry' ) );
+		$feed_id  = absint( rgpost( 'feed' ) );
+
+		if ( ! $entry_id || ! $feed_id ) {
+			wp_send_json_error( array( 'message' => 'Missing entry or feed reference.' ), 400 );
+		}
+
+		$entry = GFAPI::get_entry( $entry_id );
+		if ( is_wp_error( $entry ) ) {
+			wp_send_json_error( array( 'message' => 'Entry not found.' ), 404 );
+		}
+
+		$feed = $this->get_feed( $feed_id );
+		if ( empty( $feed ) || (int) rgar( $feed, 'form_id' ) !== (int) rgar( $entry, 'form_id' ) ) {
+			wp_send_json_error( array( 'message' => 'Feed not found for this entry.' ), 404 );
+		}
+
+		$form = GFAPI::get_form( rgar( $entry, 'form_id' ) );
+		if ( empty( $form ) ) {
+			wp_send_json_error( array( 'message' => 'Form not found.' ), 404 );
+		}
+
+		$result = $this->send_to_ortto( $feed, $entry, $form );
+
+		$this->record_feed_status( $entry, $feed, $result );
+
+		$feed_name = rgars( $feed, 'meta/feedName' );
+		if ( '' === $feed_name ) {
+			$feed_name = 'Feed #' . $feed_id;
+		}
+		$this->add_resend_note( $entry_id, $feed_name, $result );
+
+		$statuses = gform_get_meta( $entry_id, self::STATUS_META_KEY );
+		$status   = is_array( $statuses ) ? rgar( $statuses, (string) $feed_id ) : false;
+
+		if ( $result['success'] ) {
+			wp_send_json_success( array( 'html' => $this->format_status_html( $status ) ) );
+		}
+
+		wp_send_json_error(
+			array(
+				'message' => $result['message'],
+				'html'    => $this->format_status_html( $status ),
+			)
+		);
+	}
+
+	/**
+	 * Record a timeline note on the entry documenting a manual resend.
+	 *
+	 * @param int    $entry_id  Entry id.
+	 * @param string $feed_name Feed name.
+	 * @param array  $result    Result array from send_to_ortto().
+	 */
+	private function add_resend_note( $entry_id, $feed_name, $result ) {
+
+		if ( ! class_exists( 'GFFormsModel' ) || ! method_exists( 'GFFormsModel', 'add_note' ) ) {
+			return;
+		}
+
+		$user      = wp_get_current_user();
+		$user_id   = $user ? $user->ID : 0;
+		$user_name = $user ? $user->display_name : 'System';
+
+		$note = $result['success']
+			? sprintf( 'Ortto: manually resent "%s" successfully (HTTP %d).', $feed_name, (int) $result['code'] )
+			: sprintf( 'Ortto: manual resend of "%s" failed. %s', $feed_name, $result['message'] );
+
+		GFFormsModel::add_note( $entry_id, $user_id, $user_name, $note, 'alpha-ortto' );
 	}
 }
