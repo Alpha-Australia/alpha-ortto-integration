@@ -5,7 +5,14 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+## [1.1.0]
+
 ### Added
+- Resend to Ortto: each entry's detail page now shows an **Ortto** meta box
+  (beneath Notifications) listing every Ortto feed's last send status, with a
+  **Resend to Ortto** button to retry failed or missed sends.
+- Per-entry send status is recorded (sent/failed, HTTP code, message, time) on
+  both submission and manual resend, and each resend is logged as an entry note.
 - GitHub-based auto-updater: releases published on GitHub appear as normal
   plugin updates in the WordPress dashboard.
 - Release packaging workflow that builds a clean plugin zip on every version tag.
