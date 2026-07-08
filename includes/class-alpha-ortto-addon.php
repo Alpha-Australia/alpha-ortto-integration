@@ -470,7 +470,7 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 			printf(
 				'<p style="margin:8px 0 0;"><button type="button" class="button button-secondary alpha-ortto-resend" data-feed="%1$s" data-entry="%2$d">%3$s</button></p>',
 				esc_attr( $feed_id ),
-				$entry_id,
+				esc_attr( $entry_id ),
 				esc_html__( 'Resend to Ortto', 'alpha-ortto-integration' )
 			);
 			echo '</div>';
