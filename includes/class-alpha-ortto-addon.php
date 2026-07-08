@@ -247,7 +247,14 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 			);
 		}
 
-		$mappings = $this->get_generic_map_fields( $feed, 'fieldMap' );
+		// Read the raw mapping rows rather than GFAddOn::get_generic_map_fields(),
+		// which (when called without $form/$entry) returns a flattened,
+		// already-"resolved" array keyed by Ortto field instead of the
+		// key/custom_key/value rows this loop expects below.
+		$mappings = rgar( $feed, 'meta' ) ? rgars( $feed, 'meta/fieldMap' ) : rgar( $feed, 'fieldMap' );
+		if ( ! is_array( $mappings ) ) {
+			$mappings = array();
+		}
 
 		$fields   = array();
 		$location = array();

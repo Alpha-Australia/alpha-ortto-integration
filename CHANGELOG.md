@@ -5,6 +5,21 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+## [1.1.1]
+
+### Fixed
+- Field mapping was never resolving to a value on send, for any form or
+  feed, since 1.0.0: `send_to_ortto()` read the mapping through
+  `GFAddOn::get_generic_map_fields()` without passing `$form`/`$entry`,
+  which returns a different (already "resolved") array shape than the
+  code expected, so every mapped field was silently skipped and every
+  send failed with "No Ortto fields resolved to a value for this entry."
+  The mapping rows are now read directly from the feed meta instead.
+- Entry ID was always 0 in the Resend to Ortto meta box, because the
+  object `do_meta_boxes()` passes to entry-detail meta box callbacks is
+  `array( 'form' => ..., 'entry' => ..., 'mode' => ... )`, not the entry
+  itself.
+
 ## [1.1.0]
 
 ### Added
