@@ -434,12 +434,17 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 	/**
 	 * Render the Ortto status/resend meta box.
 	 *
-	 * @param array $entry   The Entry Object (passed by do_meta_boxes()).
-	 * @param array $metabox The meta box definition; form is under args/form.
+	 * GFEntryDetail::lead_detail_page() calls do_meta_boxes() with
+	 * array( 'form' => $form, 'entry' => $lead, 'mode' => $mode ) as the
+	 * object, so $entry here is that wrapper, not the entry itself.
+	 *
+	 * @param array $entry   The do_meta_boxes() object wrapper (form/entry/mode).
+	 * @param array $metabox The meta box definition; form is also under args/form.
 	 */
 	public function render_entry_meta_box( $entry, $metabox ) {
 
 		$form     = rgars( $metabox, 'args/form' );
+		$entry    = rgar( $entry, 'entry' );
 		$entry_id = (int) rgar( $entry, 'id' );
 		$feeds    = $this->get_active_feeds_for_form( rgar( $form, 'id' ) );
 
