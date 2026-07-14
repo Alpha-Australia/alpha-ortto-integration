@@ -5,6 +5,19 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+## [1.3.0]
+
+### Added
+- Account Salesforce ID sync: `POST /wp-json/alpha-ortto/v1/update-account-sf-id`
+  (`X-Api-Key` header, JSON body `{ "id": "<15 char id>" }`). Ortto's "dynamic"
+  webhook action (wait for response, update fields) only exists for Person
+  journeys, not Account journeys, so this instead calls Ortto's
+  `v1/accounts/merge` API directly to write the converted 18 character ID
+  onto the matching Account. Configured via two new field-id settings
+  ("Account field: 15/18 char Salesforce ID") under Forms → Settings → Ortto;
+  the endpoint is disabled (403) until the webhook secret, API key, and both
+  field ids are all set.
+
 ## [1.2.0]
 
 ### Added
