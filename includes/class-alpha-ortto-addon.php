@@ -132,7 +132,33 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 						'class'      => 'large',
 						'input_type' => 'password',
 						'encrypt'    => true,
-						'tooltip'    => 'A shared secret the caller must send as the X-Api-Key header. Leave blank to disable the endpoint. Generate a long random string -- treat it like a password.',
+						'tooltip'    => 'A shared secret the caller must send as the X-Api-Key header. Leave blank to disable the endpoint. Generate a long random string -- treat it like a password. Also used by the Account Salesforce ID sync below.',
+					),
+				),
+			),
+			array(
+				'title'  => 'Account Salesforce ID Sync',
+				'fields' => array(
+					array(
+						'name'  => 'account_sf_id_info',
+						'label' => 'Webhook URL',
+						'type'  => 'html',
+						'html'  => '<code>' . esc_html( rest_url( Alpha_Ortto_Account_SF_ID_Updater::REST_NAMESPACE . Alpha_Ortto_Account_SF_ID_Updater::REST_ROUTE ) ) . '</code>'
+							. '<p class="description">Account journeys don\'t have a "dynamic" webhook action, so this can\'t write the result straight back onto the Account like a Person journey webhook can. Instead, add a (classic) Webhook action to an Account journey: method POST, URL as above, header <code>X-Api-Key</code> set to the secret above, and a JSON body of <code>{ "id": "&lt;the account\'s 15 character Salesforce ID field&gt;" }</code>. This endpoint converts the ID and calls Ortto\'s Accounts API directly to write the 18 character result onto the matching Account -- both field ids below must already exist on the Account object (Settings -> Customer data -> Fields).</p>',
+					),
+					array(
+						'name'    => 'account_sf_id_15_field',
+						'label'   => 'Account field: 15 char Salesforce ID',
+						'type'    => 'text',
+						'class'   => 'medium',
+						'tooltip' => 'The Ortto Account field id already holding the 15 character Salesforce ID (e.g. from the Intercom -> Ortto sync), such as str:cm:sf_account_id_15. Used to find the Account to update.',
+					),
+					array(
+						'name'    => 'account_sf_id_18_field',
+						'label'   => 'Account field: 18 char Salesforce ID',
+						'type'    => 'text',
+						'class'   => 'medium',
+						'tooltip' => 'The Ortto Account field id to write the converted 18 character Salesforce ID into, such as str:cm:sf_account_id_18.',
 					),
 				),
 			),
