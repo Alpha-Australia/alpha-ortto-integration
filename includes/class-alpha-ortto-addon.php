@@ -84,13 +84,14 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 				'title'  => 'Ortto API Settings',
 				'fields' => array(
 					array(
-						'name'     => 'api_key',
-						'label'    => 'Ortto Private API Key',
-						'type'     => 'text',
-						'class'    => 'large',
-						'encrypt'  => true,
-						'required' => true,
-						'tooltip'  => 'In Ortto, go to Data sources -> your Custom API data source -> Configuration, and copy the Private API key.',
+						'name'       => 'api_key',
+						'label'      => 'Ortto Private API Key',
+						'type'       => 'text',
+						'class'      => 'large',
+						'input_type' => 'password',
+						'encrypt'    => true,
+						'required'   => true,
+						'tooltip'    => 'In Ortto, go to Data sources -> your Custom API data source -> Configuration, and copy the Private API key.',
 					),
 					array(
 						'name'    => 'region',
@@ -111,6 +112,27 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 							),
 						),
 						'tooltip' => 'Only relevant if your Ortto account is on a regional instance (check Ortto Settings -> Data sources -> API key).',
+					),
+				),
+			),
+			array(
+				'title'  => 'Salesforce ID Converter Webhook',
+				'fields' => array(
+					array(
+						'name'  => 'sf_id_converter_info',
+						'label' => 'Webhook URL',
+						'type'  => 'html',
+						'html'  => '<code>' . esc_html( rest_url( Alpha_Ortto_SF_ID_Converter::REST_NAMESPACE . Alpha_Ortto_SF_ID_Converter::REST_ROUTE ) ) . '</code>'
+							. '<p class="description">Call this from an Ortto webhook (GET or POST) with an <code>id</code> parameter set to a 15 or 18 character Salesforce record ID, and an <code>X-Api-Key</code> header set to the secret below. Returns JSON: <code>{ "id_15": ..., "id_18": ... }</code>.</p>',
+					),
+					array(
+						'name'       => 'sf_id_converter_secret',
+						'label'      => 'Webhook Secret',
+						'type'       => 'text',
+						'class'      => 'large',
+						'input_type' => 'password',
+						'encrypt'    => true,
+						'tooltip'    => 'A shared secret the caller must send as the X-Api-Key header. Leave blank to disable the endpoint. Generate a long random string -- treat it like a password.',
 					),
 				),
 			),
