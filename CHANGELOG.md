@@ -5,6 +5,16 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+## [1.2.0]
+
+### Added
+- Salesforce 15 → 18 character ID converter webhook: `GET/POST /wp-json/alpha-ortto/v1/convert-id?id=...`
+  with an `X-Api-Key` header, returning `{ "id_15": ..., "id_18": ... }`. Lets an
+  Ortto webhook resolve the case-safe 18 character ID (needed for deduping)
+  from a 15 character ID sent by an upstream system. Configured via a new
+  "Webhook Secret" field under Forms → Settings → Ortto; the endpoint is
+  disabled (403) until a secret is set.
+
 ## [1.1.1]
 
 ### Fixed
