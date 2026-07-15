@@ -25,6 +25,15 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 	const REST_ROUTE     = '/update-account-sf-id';
 
 	/**
+	 * The webhook payload key (Ortto calls this the field's "key_name")
+	 * that must carry the Account's 15 character Salesforce ID. Deliberately
+	 * long and specific -- something generic like "id" or "account_id"
+	 * collides with keys Ortto's webhook envelope already uses for its own
+	 * purposes (the delivery's own internal id, the Ortto account id, etc).
+	 */
+	const PAYLOAD_KEY = 'id_to_convert';
+
+	/**
 	 * Wire up the REST route.
 	 */
 	public static function init() {
@@ -42,16 +51,6 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 				'methods'             => 'POST',
 				'callback'            => array( __CLASS__, 'handle_request' ),
 				'permission_callback' => array( __CLASS__, 'check_permission' ),
-				'args'                => array(
-					'account_id' => array(
-						'required' => false,
-						'type'     => 'string',
-					),
-					'id'         => array(
-						'required' => false,
-						'type'     => 'string',
-					),
-				),
 			)
 		);
 	}
@@ -100,18 +99,14 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 	 */
 	public static function handle_request( $request ) {
 
-		$raw = $request->get_param( 'account_id' );
-		if ( null === $raw || '' === $raw ) {
-			$raw = $request->get_param( 'id' );
-		}
-
-		$id_15 = trim( (string) $raw );
+		$id_15 = trim( (string) self::extract_id( $request ) );
 
 		if ( 15 !== strlen( $id_15 ) || ! ctype_alnum( $id_15 ) ) {
 			return new WP_Error(
 				'alpha_ortto_account_sf_id_invalid',
 				sprintf(
-					'The account_id (or id) parameter must be the Account\'s 15 character alphanumeric Salesforce record ID. Received %d character value: "%s".',
+					'The "%s" field must be the Account\'s 15 character alphanumeric Salesforce record ID. Received %d character value: "%s".',
+					self::PAYLOAD_KEY,
 					strlen( $id_15 ),
 					$id_15
 				),
@@ -145,20 +140,66 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 	}
 
 	/**
+	 * Pull the PAYLOAD_KEY value out of the request.
+	 *
+	 * Ortto's standard webhook payload nests any mapped field inside the
+	 * top-level "contact" object -- e.g. { "contact": { "id_to_convert": "..." },
+	 * "id": "<the webhook delivery's own internal id>", ... } -- so a plain
+	 * WP_REST_Request::get_param() call matches unrelated top-level keys
+	 * Ortto already uses for its own purposes rather than the mapped field.
+	 * Look inside "contact" first; only fall back to the top level for
+	 * callers using a fully custom payload shape without that wrapper.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 *
+	 * @return string|null
+	 */
+	private static function extract_id( $request ) {
+
+		$body = $request->get_json_params();
+		$body = is_array( $body ) ? $body : array();
+
+		$source = ( array_key_exists( 'contact', $body ) && is_array( $body['contact'] ) )
+			? $body['contact']
+			: $body;
+
+		return ! empty( $source[ self::PAYLOAD_KEY ] ) ? $source[ self::PAYLOAD_KEY ] : null;
+	}
+
+	/**
 	 * Write the 18 character ID onto the Account that has the given 15
-	 * character ID, via Ortto's v1/accounts/merge API.
+	 * character ID, via Ortto's v1/accounts/merge API -- but only if the
+	 * destination field is currently empty, so a re-delivered or re-run
+	 * webhook never clobbers a value that's already there (e.g. one set
+	 * manually, or by some other process).
 	 *
 	 * @param string $id_15 15 character Salesforce ID (also the merge key).
 	 * @param string $id_18 18 character Salesforce ID to store.
 	 *
 	 * @return array {
-	 *     @type bool   $success Whether Ortto accepted the request.
+	 *     @type bool   $success Whether Ortto accepted the request (or there was nothing to do).
 	 *     @type string $message Human-readable outcome (error detail on failure).
 	 * }
 	 */
 	private static function push_to_ortto( $id_15, $id_18 ) {
 
 		$settings = self::get_settings();
+
+		$existing = self::get_existing_18_value( $id_15, $settings );
+
+		if ( is_wp_error( $existing ) ) {
+			return array(
+				'success' => false,
+				'message' => $existing->get_error_message(),
+			);
+		}
+
+		if ( ! empty( $existing ) ) {
+			return array(
+				'success' => true,
+				'message' => 'Skipped: the destination field already has a value ("' . $existing . '").',
+			);
+		}
 
 		$body = array(
 			'accounts'       => array(
@@ -175,17 +216,10 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 			'find_strategy'  => 0,
 		);
 
-		$region    = $settings['region'];
-		$subdomain = $region ? $region . '.' : '';
-		$url       = "https://api.{$subdomain}ap3api.com/v1/accounts/merge";
-
 		$response = wp_remote_post(
-			$url,
+			self::api_url( $settings, '/v1/accounts/merge' ),
 			array(
-				'headers' => array(
-					'X-Api-Key'    => $settings['api_key'],
-					'Content-Type' => 'application/json',
-				),
+				'headers' => self::api_headers( $settings ),
 				'body'    => wp_json_encode( $body ),
 				'timeout' => 15,
 			)
@@ -210,6 +244,92 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 		return array(
 			'success' => true,
 			'message' => 'Sent to Ortto (HTTP ' . $code . ').',
+		);
+	}
+
+	/**
+	 * Look up the Account matching the given 15 character ID and return its
+	 * current value for the 18 character field, via Ortto's v1/accounts/get
+	 * API. Returns an empty string if no matching Account exists yet, or if
+	 * the field isn't set on it.
+	 *
+	 * @param string $id_15    15 character Salesforce ID.
+	 * @param array  $settings Settings from get_settings().
+	 *
+	 * @return string|WP_Error
+	 */
+	private static function get_existing_18_value( $id_15, $settings ) {
+
+		$body = array(
+			'filter' => array(
+				'$str::is' => array(
+					'field_id' => $settings['field_15'],
+					'value'    => $id_15,
+				),
+			),
+			'fields' => array( $settings['field_18'] ),
+			'limit'  => 1,
+		);
+
+		$response = wp_remote_post(
+			self::api_url( $settings, '/v1/accounts/get' ),
+			array(
+				'headers' => self::api_headers( $settings ),
+				'body'    => wp_json_encode( $body ),
+				'timeout' => 15,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return new WP_Error(
+				'alpha_ortto_account_sf_id_lookup_failed',
+				'Ortto lookup request failed: ' . $response->get_error_message()
+			);
+		}
+
+		$code = (int) wp_remote_retrieve_response_code( $response );
+
+		if ( $code < 200 || $code >= 300 ) {
+			return new WP_Error(
+				'alpha_ortto_account_sf_id_lookup_failed',
+				'Ortto lookup returned HTTP ' . $code . ': ' . wp_remote_retrieve_body( $response )
+			);
+		}
+
+		$data     = json_decode( wp_remote_retrieve_body( $response ), true );
+		$accounts = is_array( $data ) ? rgar( $data, 'accounts' ) : array();
+
+		if ( empty( $accounts ) || ! is_array( $accounts[0] ) ) {
+			return '';
+		}
+
+		return (string) rgars( $accounts[0], 'fields/' . $settings['field_18'] );
+	}
+
+	/**
+	 * Build a regional Ortto API URL for the given path.
+	 *
+	 * @param array  $settings Settings from get_settings().
+	 * @param string $path     API path, e.g. "/v1/accounts/merge".
+	 *
+	 * @return string
+	 */
+	private static function api_url( $settings, $path ) {
+		$subdomain = $settings['region'] ? $settings['region'] . '.' : '';
+		return "https://api.{$subdomain}ap3api.com{$path}";
+	}
+
+	/**
+	 * Build the standard headers for an outbound Ortto API request.
+	 *
+	 * @param array $settings Settings from get_settings().
+	 *
+	 * @return array
+	 */
+	private static function api_headers( $settings ) {
+		return array(
+			'X-Api-Key'    => $settings['api_key'],
+			'Content-Type' => 'application/json',
 		);
 	}
 

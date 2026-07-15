@@ -5,6 +5,46 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+## [1.4.0]
+
+### Added
+- Account Salesforce ID sync now only writes the 18 character field if it's
+  currently empty on the matching Account. Looks the Account up via Ortto's
+  `v1/accounts/get` (filtering on the 15 character field, requesting only
+  the 18 character field back) before deciding whether to call
+  `v1/accounts/merge` -- so a re-delivered or re-run webhook never
+  overwrites a value that's already there.
+
+### Fixed
+- The GitHub release cache (a 6 hour transient) was independent of
+  WordPress's own update-check cadence, so clicking "Check again" on the
+  Updates screen could keep showing a stale "no update" result for up to
+  6 hours after a new release was published. Clicking "Check again" now
+  bypasses the cache.
+
+## [1.3.3]
+
+### Changed
+- Account Salesforce ID sync webhook now requires the mapped payload field
+  to use the exact key name `id_to_convert`, instead of accepting generic
+  names like `id` or `account_id`. Those collide with keys Ortto's webhook
+  envelope already uses for its own purposes (e.g. the delivery's own
+  internal id), which was causing silent misreads. Confirmed via a live
+  test that renamed the key to a deliberately unrelated value
+  (`bag_of_chickens`) and observed it correctly rejected.
+
+## [1.3.2]
+
+### Fixed
+- Account Salesforce ID sync webhook (`/wp-json/alpha-ortto/v1/update-account-sf-id`)
+  read the wrong id entirely: Ortto's standard webhook payload nests any
+  mapped field inside a top-level `contact` object, but `WP_REST_Request::
+  get_param()` only sees top-level keys -- so it was matching the payload's
+  unrelated top-level `id` (the webhook delivery's own internal 24 character
+  event id) instead of the mapped `contact.account_id` field, on every call.
+  Now reads from inside `contact` first, falling back to the top level only
+  for callers using a fully custom payload shape without that wrapper.
+
 ## [1.3.1]
 
 ### Fixed
