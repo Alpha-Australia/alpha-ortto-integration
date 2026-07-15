@@ -139,11 +139,15 @@ class Alpha_Ortto_Updater {
 			return $this->github_response;
 		}
 
-		$cache_key = 'alpha_ortto_gh_release';
-		$cached    = get_transient( $cache_key );
-		if ( false !== $cached ) {
-			$this->github_response = $cached;
-			return $this->github_response;
+		$cache_key   = 'alpha_ortto_gh_release';
+		$force_check = ! empty( $_GET['force-check'] );
+
+		if ( ! $force_check ) {
+			$cached = get_transient( $cache_key );
+			if ( false !== $cached ) {
+				$this->github_response = $cached;
+				return $this->github_response;
+			}
 		}
 
 		$request_uri = sprintf(
