@@ -5,6 +5,18 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+## [1.3.2]
+
+### Fixed
+- Account Salesforce ID sync webhook (`/wp-json/alpha-ortto/v1/update-account-sf-id`)
+  read the wrong id entirely: Ortto's standard webhook payload nests any
+  mapped field inside a top-level `contact` object, but `WP_REST_Request::
+  get_param()` only sees top-level keys -- so it was matching the payload's
+  unrelated top-level `id` (the webhook delivery's own internal 24 character
+  event id) instead of the mapped `contact.account_id` field, on every call.
+  Now reads from inside `contact` first, falling back to the top level only
+  for callers using a fully custom payload shape without that wrapper.
+
 ## [1.3.1]
 
 ### Fixed

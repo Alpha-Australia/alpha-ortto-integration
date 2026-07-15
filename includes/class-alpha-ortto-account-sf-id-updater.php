@@ -100,18 +100,13 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 	 */
 	public static function handle_request( $request ) {
 
-		$raw = $request->get_param( 'account_id' );
-		if ( null === $raw || '' === $raw ) {
-			$raw = $request->get_param( 'id' );
-		}
-
-		$id_15 = trim( (string) $raw );
+		$id_15 = trim( (string) self::extract_id( $request ) );
 
 		if ( 15 !== strlen( $id_15 ) || ! ctype_alnum( $id_15 ) ) {
 			return new WP_Error(
 				'alpha_ortto_account_sf_id_invalid',
 				sprintf(
-					'The account_id (or id) parameter must be the Account\'s 15 character alphanumeric Salesforce record ID. Received %d character value: "%s".',
+					'The account_id (or id) field must be the Account\'s 15 character alphanumeric Salesforce record ID. Received %d character value: "%s".',
 					strlen( $id_15 ),
 					$id_15
 				),
@@ -142,6 +137,39 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 			),
 			200
 		);
+	}
+
+	/**
+	 * Pull the account_id (or id) value out of the request.
+	 *
+	 * Ortto's standard webhook payload nests any mapped field inside the
+	 * top-level "contact" object -- e.g. { "contact": { "account_id": "..." },
+	 * "id": "<the webhook delivery's own internal id>", ... } -- so a plain
+	 * WP_REST_Request::get_param() call matches that unrelated top-level
+	 * "id" (always a 24 character hex string) rather than the mapped field.
+	 * Look inside "contact" first; only fall back to the top level for
+	 * callers using a fully custom payload shape without that wrapper.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 *
+	 * @return string|null
+	 */
+	private static function extract_id( $request ) {
+
+		$body = $request->get_json_params();
+		$body = is_array( $body ) ? $body : array();
+
+		$source = ( array_key_exists( 'contact', $body ) && is_array( $body['contact'] ) )
+			? $body['contact']
+			: $body;
+
+		foreach ( array( 'account_id', 'id' ) as $key ) {
+			if ( ! empty( $source[ $key ] ) ) {
+				return $source[ $key ];
+			}
+		}
+
+		return null;
 	}
 
 	/**
