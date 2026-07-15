@@ -5,6 +5,23 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+## [1.4.0]
+
+### Added
+- Account Salesforce ID sync now only writes the 18 character field if it's
+  currently empty on the matching Account. Looks the Account up via Ortto's
+  `v1/accounts/get` (filtering on the 15 character field, requesting only
+  the 18 character field back) before deciding whether to call
+  `v1/accounts/merge` -- so a re-delivered or re-run webhook never
+  overwrites a value that's already there.
+
+### Fixed
+- The GitHub release cache (a 6 hour transient) was independent of
+  WordPress's own update-check cadence, so clicking "Check again" on the
+  Updates screen could keep showing a stale "no update" result for up to
+  6 hours after a new release was published. Clicking "Check again" now
+  bypasses the cache.
+
 ## [1.3.3]
 
 ### Changed

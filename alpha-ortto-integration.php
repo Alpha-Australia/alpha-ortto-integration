@@ -3,7 +3,7 @@
  * Plugin Name: Alpha Ortto Integration
  * Plugin URI: https://github.com/Alpha-Australia/alpha-ortto-integration
  * Description: Adds an "Ortto" feed tab to each Gravity Form, letting you map fields to Ortto person fields and send contacts to Ortto directly on submission (no automatic blur-capture, no separate Webhooks feed required).
- * Version: 1.3.3
+ * Version: 1.4.0
  * Author: Alpha Australia
  * Author URI: https://alpha.org.au
  * Text Domain: alpha-ortto-integration
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ALPHA_ORTTO_ADDON_VERSION', '1.3.3' );
+define( 'ALPHA_ORTTO_ADDON_VERSION', '1.4.0' );
 
 require_once __DIR__ . '/includes/class-alpha-ortto-addon-bootstrap.php';
 require_once __DIR__ . '/includes/class-alpha-ortto-sf-id-converter.php';
