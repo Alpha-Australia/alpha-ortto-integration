@@ -144,14 +144,14 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 						'label' => 'Webhook URL',
 						'type'  => 'html',
 						'html'  => '<code>' . esc_html( rest_url( Alpha_Ortto_Account_SF_ID_Updater::REST_NAMESPACE . Alpha_Ortto_Account_SF_ID_Updater::REST_ROUTE ) ) . '</code>'
-							. '<p class="description">Account journeys don\'t have a "dynamic" webhook action, so this can\'t write the result straight back onto the Account like a Person journey webhook can. Instead, add a (classic) Webhook action to an Account journey: method POST, URL as above, header <code>X-Api-Key</code> set to the secret above, and a JSON body of <code>{ "id": "&lt;the account\'s 15 character Salesforce ID field&gt;" }</code>. This endpoint converts the ID and calls Ortto\'s Accounts API directly to write the 18 character result onto the matching Account -- both field ids below must already exist on the Account object (Settings -> Customer data -> Fields).</p>',
+							. '<p class="description">Account journeys don\'t have a "dynamic" webhook action, so this can\'t write the result straight back onto the Account like a Person journey webhook can. Instead, add a (classic) Webhook action to an Account journey: method POST, URL as above, header <code>X-Api-Key</code> set to the secret above, and one payload field with key name <code>account_id</code> (or <code>id</code>) mapped to the Account\'s 15 character Salesforce ID field. This endpoint converts the ID and calls Ortto\'s Accounts API directly to write the 18 character result onto the matching Account -- both field ids below must already exist on the Account object (Settings -> Customer data -> Fields), and must be the actual Ortto field id (e.g. str:oib:... or str:cm:...), not the payload\'s key name.</p>',
 					),
 					array(
 						'name'    => 'account_sf_id_15_field',
 						'label'   => 'Account field: 15 char Salesforce ID',
 						'type'    => 'text',
 						'class'   => 'medium',
-						'tooltip' => 'The Ortto Account field id already holding the 15 character Salesforce ID (e.g. from the Intercom -> Ortto sync), such as str:cm:sf_account_id_15. Used to find the Account to update.',
+						'tooltip' => 'The Ortto Account field id (from the webhook\'s "field_id", not its "key_name") already holding the 15 character Salesforce ID -- e.g. str:oib:customattributesaccount-id if synced from Intercom. Used to find the Account to update.',
 					),
 					array(
 						'name'    => 'account_sf_id_18_field',

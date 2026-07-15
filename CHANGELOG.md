@@ -5,6 +5,17 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+## [1.3.1]
+
+### Fixed
+- Account Salesforce ID sync webhook (`/wp-json/alpha-ortto/v1/update-account-sf-id`)
+  only read the incoming ID from a JSON key named `id`, but Ortto's classic
+  webhook action sends whatever key name you configure for that field (e.g.
+  `account_id`), so every real call 400'd. Now accepts either `account_id`
+  or `id`. Also clarified the settings copy: the two "Account field" id
+  settings need the Ortto field id (`field_id`, e.g. `str:oib:...`), not the
+  webhook payload's key name (`key_name`).
+
 ## [1.3.0]
 
 ### Added

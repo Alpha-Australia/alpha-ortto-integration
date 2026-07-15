@@ -43,8 +43,12 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 				'callback'            => array( __CLASS__, 'handle_request' ),
 				'permission_callback' => array( __CLASS__, 'check_permission' ),
 				'args'                => array(
-					'id' => array(
-						'required' => true,
+					'account_id' => array(
+						'required' => false,
+						'type'     => 'string',
+					),
+					'id'         => array(
+						'required' => false,
 						'type'     => 'string',
 					),
 				),
@@ -96,12 +100,21 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 	 */
 	public static function handle_request( $request ) {
 
-		$id_15 = trim( (string) $request->get_param( 'id' ) );
+		$raw = $request->get_param( 'account_id' );
+		if ( null === $raw || '' === $raw ) {
+			$raw = $request->get_param( 'id' );
+		}
+
+		$id_15 = trim( (string) $raw );
 
 		if ( 15 !== strlen( $id_15 ) || ! ctype_alnum( $id_15 ) ) {
 			return new WP_Error(
 				'alpha_ortto_account_sf_id_invalid',
-				'The id parameter must be the Account\'s 15 character alphanumeric Salesforce record ID.',
+				sprintf(
+					'The account_id (or id) parameter must be the Account\'s 15 character alphanumeric Salesforce record ID. Received %d character value: "%s".',
+					strlen( $id_15 ),
+					$id_15
+				),
 				array( 'status' => 400 )
 			);
 		}
