@@ -5,6 +5,21 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+## [1.4.2]
+
+### Fixed
+- Ortto's own "Verify"/Test-webhook click sends a generic test payload
+  that doesn't carry real Account-journey data (no `account_id`, and/or
+  no valid `id_to_convert`), and treats any non-2xx response from the
+  endpoint as the webhook itself being broken -- blocking the journey
+  step from being saved. A payload mismatch like this is no longer
+  reported as a 400: the endpoint now returns 200 with
+  `{"status": "skipped", "reason": "..."}` explaining what didn't match,
+  and reserves non-2xx responses for things that are actually wrong on
+  our end (auth failures, or the upstream call to Ortto's own API
+  failing). A successful write now returns `{"status": "ok", ...}` for
+  the same reason -- consistent shape either way.
+
 ## [1.4.1]
 
 ### Fixed
