@@ -114,57 +114,93 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 	 * Handle the REST request: convert the supplied 15 character ID and
 	 * push the 18 character result back onto the matching Account.
 	 *
+	 * Ortto's own "Verify"/Test-webhook click sends a generic test payload
+	 * that doesn't carry real Account-journey data (no "account_id", and/or
+	 * no valid id_to_convert), and treats any non-2xx response as the
+	 * webhook itself being broken -- blocking the journey step from being
+	 * saved. So a mismatch here isn't a caller-facing error: it's reported
+	 * as a 200 with a "skipped" status and a reason, and a non-2xx status
+	 * is reserved for things that are actually wrong on our end (auth, or
+	 * the upstream call to Ortto's own API failing).
+	 *
 	 * @param WP_REST_Request $request Request.
 	 *
-	 * @return WP_REST_Response|WP_Error
+	 * @return WP_REST_Response
 	 */
 	public static function handle_request( $request ) {
 
 		$id_15 = trim( (string) self::extract_payload_value( $request, self::PAYLOAD_KEY ) );
 
 		if ( 15 !== strlen( $id_15 ) || ! ctype_alnum( $id_15 ) ) {
-			return new WP_Error(
-				'alpha_ortto_account_sf_id_invalid',
+			return self::skipped(
 				sprintf(
-					'The "%s" field must be the Account\'s 15 character alphanumeric Salesforce record ID. Received %d character value: "%s".',
+					'The "%s" field isn\'t a 15 character alphanumeric Salesforce record ID (got %d characters: "%s") -- likely a Test-webhook click rather than a real Account-journey run.',
 					self::PAYLOAD_KEY,
 					strlen( $id_15 ),
 					$id_15
-				),
-				array( 'status' => 400 )
+				)
 			);
 		}
 
 		$ortto_account_id = trim( (string) self::extract_payload_value( $request, self::ACCOUNT_ID_KEY ) );
 
 		if ( '' === $ortto_account_id ) {
-			return new WP_Error(
-				'alpha_ortto_account_sf_id_missing_account',
-				'Missing "' . self::ACCOUNT_ID_KEY . '" in the webhook payload -- this endpoint relies on it to identify the Account. Account-journey webhooks include it automatically; a Person-journey or Test-webhook payload may not.',
-				array( 'status' => 400 )
+			return self::skipped(
+				'Missing "' . self::ACCOUNT_ID_KEY . '" in the webhook payload -- this endpoint relies on it to identify the Account. Account-journey webhooks include it automatically; a Test-webhook click or Person-journey payload may not.',
+				array( 'id_15' => $id_15 )
 			);
 		}
 
 		$id_18 = Alpha_Ortto_SF_ID_Converter::convert_15_to_18( $id_15 );
 
 		if ( is_wp_error( $id_18 ) ) {
-			return $id_18;
+			return self::skipped( $id_18->get_error_message(), array( 'id_15' => $id_15 ) );
 		}
 
 		$result = self::push_to_ortto( $ortto_account_id, $id_18 );
 
 		if ( ! $result['success'] ) {
-			return new WP_Error(
-				'alpha_ortto_account_sf_id_upstream_error',
-				$result['message'],
-				array( 'status' => 502 )
+			return new WP_REST_Response(
+				array(
+					'status' => 'error',
+					'reason' => $result['message'],
+					'id_15'  => $id_15,
+					'id_18'  => $id_18,
+				),
+				502
 			);
 		}
 
 		return new WP_REST_Response(
 			array(
-				'id_15' => $id_15,
-				'id_18' => $id_18,
+				'status' => 'ok',
+				'reason' => $result['message'],
+				'id_15'  => $id_15,
+				'id_18'  => $id_18,
+			),
+			200
+		);
+	}
+
+	/**
+	 * Build a 200 "skipped" response: something about the request didn't
+	 * look like a real Account-journey conversion call, but that's not an
+	 * error Ortto's webhook verification should choke on.
+	 *
+	 * @param string $reason Human-readable explanation.
+	 * @param array  $extra  Additional response fields, e.g. a partially
+	 *                       resolved id_15.
+	 *
+	 * @return WP_REST_Response
+	 */
+	private static function skipped( $reason, $extra = array() ) {
+		return new WP_REST_Response(
+			array_merge(
+				array(
+					'status' => 'skipped',
+					'reason' => $reason,
+				),
+				$extra
 			),
 			200
 		);
