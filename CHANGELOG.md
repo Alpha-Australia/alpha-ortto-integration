@@ -5,6 +5,22 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+## [1.4.1]
+
+### Fixed
+- Account Salesforce ID sync's `v1/accounts/merge` call always failed with
+  `400 No valid accounts provided (can not apply mutation for
+  str:oib:...)`: the 15 character field is synced by the Intercom data
+  source integration, and Ortto rejects any merge that lists such a field
+  in `fields` at all, even to set its own unchanged value. Now matches
+  the Account by Ortto's own internal account id instead (included
+  automatically as the reserved `account_id` key on every Account-journey
+  webhook call) via `str:o:account_id`, never referencing the Intercom
+  field. The plugin no longer needs (or has) an "Account field: 15 char
+  Salesforce ID" setting -- the Salesforce ID value now comes directly
+  from the webhook payload's `id_to_convert` field, and matching no
+  longer depends on knowing which field holds it on the Account.
+
 ## [1.4.0]
 
 ### Added

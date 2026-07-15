@@ -8,9 +8,17 @@
  * Account that triggered the journey. This instead accepts a call from an
  * Account journey's (classic) webhook action carrying the 15 character
  * Salesforce ID, computes the 18 character ID, and pushes it back onto the
- * Account itself via Ortto's v1/accounts/merge API -- matching the Account
- * by its existing 15 character ID field, so no Ortto-side account
- * identifier needs to be known by this endpoint.
+ * Account itself via Ortto's v1/accounts/merge API.
+ *
+ * The Account is matched by Ortto's own internal account id (which every
+ * Account-journey webhook call includes automatically, as the reserved
+ * top-level "account_id" payload key) rather than by the Intercom-synced
+ * 15 character ID field: that field belongs to the Intercom data source
+ * integration, and Ortto rejects any merge that lists it in "fields" at
+ * all -- even to set its own unchanged value -- with "can not apply
+ * mutation for <field>". Matching by Ortto's internal id sidesteps that
+ * entirely, and needs no plugin setting to know which field holds the
+ * Salesforce ID, since the value arrives directly in the webhook payload.
  *
  * @package Alpha_Ortto_Integration
  */
@@ -32,6 +40,20 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 	 * purposes (the delivery's own internal id, the Ortto account id, etc).
 	 */
 	const PAYLOAD_KEY = 'id_to_convert';
+
+	/**
+	 * Reserved top-level payload key Ortto automatically includes on every
+	 * Account-journey webhook call: Ortto's own internal id for the Account
+	 * that triggered the journey. Not configurable -- this isn't something
+	 * the caller maps, it's part of Ortto's fixed webhook envelope.
+	 */
+	const ACCOUNT_ID_KEY = 'account_id';
+
+	/**
+	 * The Ortto field id used to merge_by / set when targeting an Account
+	 * by its own internal id, per Ortto's accounts/merge API.
+	 */
+	const ORTTO_ACCOUNT_ID_FIELD = 'str:o:account_id';
 
 	/**
 	 * Wire up the REST route.
@@ -67,11 +89,10 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 
 		$settings = self::get_settings();
 
-		if ( '' === $settings['webhook_secret'] || '' === $settings['api_key']
-			|| '' === $settings['field_15'] || '' === $settings['field_18'] ) {
+		if ( '' === $settings['webhook_secret'] || '' === $settings['api_key'] || '' === $settings['field_18'] ) {
 			return new WP_Error(
 				'alpha_ortto_account_sf_id_not_configured',
-				'The Account Salesforce ID sync is not fully configured. Go to Forms -> Settings -> Ortto to set the webhook secret, API key, and both account field ids.',
+				'The Account Salesforce ID sync is not fully configured. Go to Forms -> Settings -> Ortto to set the webhook secret, API key, and the 18 character account field id.',
 				array( 'status' => 403 )
 			);
 		}
@@ -99,7 +120,7 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 	 */
 	public static function handle_request( $request ) {
 
-		$id_15 = trim( (string) self::extract_id( $request ) );
+		$id_15 = trim( (string) self::extract_payload_value( $request, self::PAYLOAD_KEY ) );
 
 		if ( 15 !== strlen( $id_15 ) || ! ctype_alnum( $id_15 ) ) {
 			return new WP_Error(
@@ -114,13 +135,23 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 			);
 		}
 
+		$ortto_account_id = trim( (string) self::extract_payload_value( $request, self::ACCOUNT_ID_KEY ) );
+
+		if ( '' === $ortto_account_id ) {
+			return new WP_Error(
+				'alpha_ortto_account_sf_id_missing_account',
+				'Missing "' . self::ACCOUNT_ID_KEY . '" in the webhook payload -- this endpoint relies on it to identify the Account. Account-journey webhooks include it automatically; a Person-journey or Test-webhook payload may not.',
+				array( 'status' => 400 )
+			);
+		}
+
 		$id_18 = Alpha_Ortto_SF_ID_Converter::convert_15_to_18( $id_15 );
 
 		if ( is_wp_error( $id_18 ) ) {
 			return $id_18;
 		}
 
-		$result = self::push_to_ortto( $id_15, $id_18 );
+		$result = self::push_to_ortto( $ortto_account_id, $id_18 );
 
 		if ( ! $result['success'] ) {
 			return new WP_Error(
@@ -140,21 +171,23 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 	}
 
 	/**
-	 * Pull the PAYLOAD_KEY value out of the request.
+	 * Pull a value out of the request's JSON body.
 	 *
 	 * Ortto's standard webhook payload nests any mapped field inside the
 	 * top-level "contact" object -- e.g. { "contact": { "id_to_convert": "..." },
 	 * "id": "<the webhook delivery's own internal id>", ... } -- so a plain
 	 * WP_REST_Request::get_param() call matches unrelated top-level keys
 	 * Ortto already uses for its own purposes rather than the mapped field.
-	 * Look inside "contact" first; only fall back to the top level for
-	 * callers using a fully custom payload shape without that wrapper.
+	 * A real Account-journey run, though, sends a flat payload with no
+	 * "contact" wrapper at all. Look inside "contact" first if present,
+	 * otherwise read the top level directly.
 	 *
 	 * @param WP_REST_Request $request Request.
+	 * @param string           $key     Key to read.
 	 *
 	 * @return string|null
 	 */
-	private static function extract_id( $request ) {
+	private static function extract_payload_value( $request, $key ) {
 
 		$body = $request->get_json_params();
 		$body = is_array( $body ) ? $body : array();
@@ -163,29 +196,33 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 			? $body['contact']
 			: $body;
 
-		return ! empty( $source[ self::PAYLOAD_KEY ] ) ? $source[ self::PAYLOAD_KEY ] : null;
+		return ! empty( $source[ $key ] ) ? $source[ $key ] : null;
 	}
 
 	/**
-	 * Write the 18 character ID onto the Account that has the given 15
-	 * character ID, via Ortto's v1/accounts/merge API -- but only if the
-	 * destination field is currently empty, so a re-delivered or re-run
-	 * webhook never clobbers a value that's already there (e.g. one set
-	 * manually, or by some other process).
+	 * Write the 18 character ID onto the given Account, via Ortto's
+	 * v1/accounts/merge API -- but only if the destination field is
+	 * currently empty, so a re-delivered or re-run webhook never clobbers
+	 * a value that's already there (e.g. one set manually, or by some
+	 * other process).
 	 *
-	 * @param string $id_15 15 character Salesforce ID (also the merge key).
-	 * @param string $id_18 18 character Salesforce ID to store.
+	 * Matches by Ortto's own internal account id rather than any
+	 * Salesforce-ID field, since Ortto rejects merges that list an
+	 * Intercom-synced field in "fields" at all, even unchanged.
+	 *
+	 * @param string $ortto_account_id Ortto's internal id for the Account.
+	 * @param string $id_18            18 character Salesforce ID to store.
 	 *
 	 * @return array {
 	 *     @type bool   $success Whether Ortto accepted the request (or there was nothing to do).
 	 *     @type string $message Human-readable outcome (error detail on failure).
 	 * }
 	 */
-	private static function push_to_ortto( $id_15, $id_18 ) {
+	private static function push_to_ortto( $ortto_account_id, $id_18 ) {
 
 		$settings = self::get_settings();
 
-		$existing = self::get_existing_18_value( $id_15, $settings );
+		$existing = self::get_existing_18_value( $ortto_account_id, $settings );
 
 		if ( is_wp_error( $existing ) ) {
 			return array(
@@ -205,13 +242,13 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 			'accounts'       => array(
 				array(
 					'fields' => array(
-						$settings['field_15'] => $id_15,
-						$settings['field_18'] => $id_18,
+						self::ORTTO_ACCOUNT_ID_FIELD => $ortto_account_id,
+						$settings['field_18']        => $id_18,
 					),
 				),
 			),
 			'async'          => true,
-			'merge_by'       => array( $settings['field_15'] ),
+			'merge_by'       => array( self::ORTTO_ACCOUNT_ID_FIELD ),
 			'merge_strategy' => 2,
 			'find_strategy'  => 0,
 		);
@@ -248,31 +285,25 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 	}
 
 	/**
-	 * Look up the Account matching the given 15 character ID and return its
-	 * current value for the 18 character field, via Ortto's v1/accounts/get
-	 * API. Returns an empty string if no matching Account exists yet, or if
-	 * the field isn't set on it.
+	 * Look up the Account by Ortto's internal id and return its current
+	 * value for the 18 character field, via Ortto's v1/accounts/get-by-ids
+	 * API. Returns an empty string if the Account can't be found yet, or
+	 * if the field isn't set on it.
 	 *
-	 * @param string $id_15    15 character Salesforce ID.
-	 * @param array  $settings Settings from get_settings().
+	 * @param string $ortto_account_id Ortto's internal id for the Account.
+	 * @param array  $settings         Settings from get_settings().
 	 *
 	 * @return string|WP_Error
 	 */
-	private static function get_existing_18_value( $id_15, $settings ) {
+	private static function get_existing_18_value( $ortto_account_id, $settings ) {
 
 		$body = array(
-			'filter' => array(
-				'$str::is' => array(
-					'field_id' => $settings['field_15'],
-					'value'    => $id_15,
-				),
-			),
-			'fields' => array( $settings['field_18'] ),
-			'limit'  => 1,
+			'account_ids' => array( $ortto_account_id ),
+			'fields'      => array( $settings['field_18'] ),
 		);
 
 		$response = wp_remote_post(
-			self::api_url( $settings, '/v1/accounts/get' ),
+			self::api_url( $settings, '/v1/accounts/get-by-ids' ),
 			array(
 				'headers' => self::api_headers( $settings ),
 				'body'    => wp_json_encode( $body ),
@@ -346,7 +377,6 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 				'webhook_secret' => '',
 				'api_key'        => '',
 				'region'         => '',
-				'field_15'       => '',
 				'field_18'       => '',
 			);
 		}
@@ -357,7 +387,6 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 			'webhook_secret' => trim( (string) rgar( $settings, 'sf_id_converter_secret' ) ),
 			'api_key'        => trim( (string) rgar( $settings, 'api_key' ) ),
 			'region'         => trim( (string) rgar( $settings, 'region' ) ),
-			'field_15'       => trim( (string) rgar( $settings, 'account_sf_id_15_field' ) ),
 			'field_18'       => trim( (string) rgar( $settings, 'account_sf_id_18_field' ) ),
 		);
 	}
