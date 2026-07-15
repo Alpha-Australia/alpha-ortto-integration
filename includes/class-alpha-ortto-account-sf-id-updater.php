@@ -25,6 +25,15 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 	const REST_ROUTE     = '/update-account-sf-id';
 
 	/**
+	 * The webhook payload key (Ortto calls this the field's "key_name")
+	 * that must carry the Account's 15 character Salesforce ID. Deliberately
+	 * long and specific -- something generic like "id" or "account_id"
+	 * collides with keys Ortto's webhook envelope already uses for its own
+	 * purposes (the delivery's own internal id, the Ortto account id, etc).
+	 */
+	const PAYLOAD_KEY = 'id_to_convert';
+
+	/**
 	 * Wire up the REST route.
 	 */
 	public static function init() {
@@ -42,16 +51,6 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 				'methods'             => 'POST',
 				'callback'            => array( __CLASS__, 'handle_request' ),
 				'permission_callback' => array( __CLASS__, 'check_permission' ),
-				'args'                => array(
-					'account_id' => array(
-						'required' => false,
-						'type'     => 'string',
-					),
-					'id'         => array(
-						'required' => false,
-						'type'     => 'string',
-					),
-				),
 			)
 		);
 	}
@@ -106,7 +105,8 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 			return new WP_Error(
 				'alpha_ortto_account_sf_id_invalid',
 				sprintf(
-					'The account_id (or id) field must be the Account\'s 15 character alphanumeric Salesforce record ID. Received %d character value: "%s".',
+					'The "%s" field must be the Account\'s 15 character alphanumeric Salesforce record ID. Received %d character value: "%s".',
+					self::PAYLOAD_KEY,
 					strlen( $id_15 ),
 					$id_15
 				),
@@ -140,13 +140,13 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 	}
 
 	/**
-	 * Pull the account_id (or id) value out of the request.
+	 * Pull the PAYLOAD_KEY value out of the request.
 	 *
 	 * Ortto's standard webhook payload nests any mapped field inside the
-	 * top-level "contact" object -- e.g. { "contact": { "account_id": "..." },
+	 * top-level "contact" object -- e.g. { "contact": { "id_to_convert": "..." },
 	 * "id": "<the webhook delivery's own internal id>", ... } -- so a plain
-	 * WP_REST_Request::get_param() call matches that unrelated top-level
-	 * "id" (always a 24 character hex string) rather than the mapped field.
+	 * WP_REST_Request::get_param() call matches unrelated top-level keys
+	 * Ortto already uses for its own purposes rather than the mapped field.
 	 * Look inside "contact" first; only fall back to the top level for
 	 * callers using a fully custom payload shape without that wrapper.
 	 *
@@ -163,13 +163,7 @@ class Alpha_Ortto_Account_SF_ID_Updater {
 			? $body['contact']
 			: $body;
 
-		foreach ( array( 'account_id', 'id' ) as $key ) {
-			if ( ! empty( $source[ $key ] ) ) {
-				return $source[ $key ];
-			}
-		}
-
-		return null;
+		return ! empty( $source[ self::PAYLOAD_KEY ] ) ? $source[ self::PAYLOAD_KEY ] : null;
 	}
 
 	/**

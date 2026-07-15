@@ -5,6 +5,17 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+## [1.3.3]
+
+### Changed
+- Account Salesforce ID sync webhook now requires the mapped payload field
+  to use the exact key name `id_to_convert`, instead of accepting generic
+  names like `id` or `account_id`. Those collide with keys Ortto's webhook
+  envelope already uses for its own purposes (e.g. the delivery's own
+  internal id), which was causing silent misreads. Confirmed via a live
+  test that renamed the key to a deliberately unrelated value
+  (`bag_of_chickens`) and observed it correctly rejected.
+
 ## [1.3.2]
 
 ### Fixed
