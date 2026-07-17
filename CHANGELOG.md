@@ -5,6 +5,12 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+- Per-form **Tags** feed setting: apply one or more fixed tags
+  (comma-separated) in Ortto to every contact a form sends, regardless of
+  what was submitted. Tags are added on top of any tag pulled from a field
+  via the existing `tag` mapping key, and de-duplicated before sending.
+
 ## [1.4.2]
 
 ### Fixed

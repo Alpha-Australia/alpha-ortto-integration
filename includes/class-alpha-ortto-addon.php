@@ -209,6 +209,13 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 						'tooltip'     => 'Left column: an Ortto person field (str::email, str::first, str::last, or a custom field like str:cm:your-field that already exists in Ortto). Also supports the special keys location.source_ip (sends the value for geolocation) and tag (applies a tag to the contact). Right column: pick the Gravity Forms field or entry meta (IP address, date created, form title, etc.) to pull the value from.',
 					),
 					array(
+						'name'    => 'tags',
+						'label'   => 'Tags',
+						'type'    => 'text',
+						'class'   => 'medium',
+						'tooltip' => 'Fixed tag(s) applied in Ortto to every contact this form sends, regardless of what was submitted. Separate multiple tags with commas (e.g. "Life Essentials, Website lead"). These are added on top of any tag pulled from a field via the "tag" mapping key above.',
+					),
+					array(
 						'type'           => 'feed_condition',
 						'name'           => 'feedCondition',
 						'label'          => 'Condition',
@@ -338,8 +345,20 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 			$person['location'] = $location;
 		}
 
+		// Fixed feed-level tags applied to every submission (comma-separated),
+		// on top of any tag pulled from a mapped field above.
+		$static_tags = rgar( $feed['meta'], 'tags' );
+		if ( ! empty( $static_tags ) ) {
+			foreach ( explode( ',', $static_tags ) as $tag ) {
+				$tag = trim( $tag );
+				if ( '' !== $tag ) {
+					$tags[] = $tag;
+				}
+			}
+		}
+
 		if ( ! empty( $tags ) ) {
-			$person['tags'] = $tags;
+			$person['tags'] = array_values( array_unique( $tags ) );
 		}
 
 		$merge_by = rgar( $feed['meta'], 'mergeBy' );

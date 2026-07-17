@@ -42,6 +42,9 @@ normal plugin updates in **Dashboard → Updates**.
 - **Field mapping** — left column is an Ortto field (`str::email`, `str::first`,
   a custom `str:cm:your-field`, or the special keys `location.source_ip` and
   `tag`); right column is the Gravity Forms field/meta to pull from.
+- **Tags** — fixed tag(s) applied to every contact this form sends, regardless
+  of what was submitted. Separate multiple tags with commas. Added on top of any
+  tag pulled from a field via the `tag` mapping key.
 - **Condition** — optionally only send entries that meet a condition.
 
 ## Development
