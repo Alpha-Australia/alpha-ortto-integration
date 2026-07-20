@@ -5,6 +5,8 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+## [1.5.0]
+
 ### Added
 - Web session linking: ties a visitor's anonymous Ortto tracking-code
   session to the contact identified on form submit, via a new

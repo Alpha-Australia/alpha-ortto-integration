@@ -72,10 +72,27 @@ jobs:
       - name: Zip plugin
         run: zip -r alpha-ortto-integration.zip alpha-ortto-integration
 
+      # A tag with a semver pre-release suffix (e.g. v1.5.0-rc.1) publishes as
+      # a GitHub prerelease. The plugin's own updater only ever checks
+      # /releases/latest, which GitHub excludes prereleases from -- so this
+      # lets a candidate build be tagged, downloaded, and smoke-tested
+      # manually without it reaching any site's auto-updater. Promote it by
+      # tagging the plain version (e.g. v1.5.0) once it's confirmed good.
+      - name: Determine if this is a pre-release
+        id: prerelease
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          if [[ "$TAG" == *-* ]]; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
         with:
           files: alpha-ortto-integration.zip
           generate_release_notes: true
+          prerelease: ${{ steps.prerelease.outputs.value }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

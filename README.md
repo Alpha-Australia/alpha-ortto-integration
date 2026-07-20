@@ -116,6 +116,13 @@ Releases are automated. Bump the version, tag it, and push the tag:
 The **Package WordPress Plugin** workflow builds a clean zip and attaches it to
 a GitHub release. Sites running the plugin pick up the update automatically.
 
+**Pre-releases**: tag with a semver pre-release suffix, e.g. `v1.5.0-rc.1`
+(the plugin header/constant must match exactly, suffix included). This
+publishes as a GitHub prerelease, which `/releases/latest` -- and so the
+plugin's own updater -- always excludes, so it's safe to download and smoke
+test manually without any site picking it up automatically. Once confirmed,
+promote it by bumping to the plain version (e.g. `1.5.0`) and tagging that.
+
 ## Continuous integration
 
 Every push and pull request runs three checks (`.github/workflows/ci.yml`):
