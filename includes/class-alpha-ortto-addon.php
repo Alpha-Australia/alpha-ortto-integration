@@ -380,7 +380,14 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 				continue;
 			}
 
-			$value = $this->get_field_value( $form, $entry, $source );
+			// The value field offers a dropdown of form fields plus "Custom
+			// Value...", which stores the literal string "gf_custom" as the
+			// value with the typed text (merge tags allowed) in custom_value.
+			if ( 'gf_custom' === $source ) {
+				$value = GFCommon::replace_variables( rgar( $mapping, 'custom_value' ), $form, $entry, false, false, false, 'text' );
+			} else {
+				$value = $this->get_field_value( $form, $entry, $source );
+			}
 
 			if ( '' === $value || null === $value ) {
 				continue;
