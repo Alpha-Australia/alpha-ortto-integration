@@ -18,6 +18,39 @@ All notable changes to this plugin are documented here. This project follows
   merge key) in the form's existing field mapping -- no other plugin code
   is involved once that's wired up. See the README's "Web session
   linking" section for the full setup recipe. Off by default.
+- Per-form **Form Submit Activity** setting: when enabled, also records a
+  custom "Form Submit" activity against the contact in Ortto (a separate
+  call to `v1/activities/create`) whenever the feed sends successfully, with
+  `str:cm:form-name`, `int:cm:form-id`, and `str:cm:entry-id` attributes.
+  Attaches to the same contact the person merge targeted, and reuses any
+  geolocation mapped via `location.source_ip`. The activity id is
+  configurable per feed (defaults to `act:cm:form-submit`) and must already
+  exist in Ortto (CDP -> Activities) or the activity call will fail --
+  this never affects the contact sync itself. The entry-detail meta box
+  and Resend button now cover the activity send alongside the contact
+  sync. Off by default for feeds saved before this setting existed, so
+  upgrading doesn't retroactively start sending activities for every
+  existing feed at once.
+- Per-form **Tags** feed setting: apply one or more fixed tags
+  (comma-separated) in Ortto to every contact a form sends, regardless of
+  what was submitted. Tags are added on top of any tag pulled from a field
+  via the existing `tag` mapping key, and de-duplicated before sending.
+- Field mapping's Ortto field column is now a dropdown of common fields
+  (Email, First/Last name, Phone, City, State/region, Country, Postal code,
+  External ID) plus the existing Tag / Geolocation special actions, with a
+  **Custom field…** option for anything else (e.g. `str:cm:your-field`) --
+  instead of requiring every mapping to be hand-typed.
+
+### Fixed
+- Picking "Custom Value" for a mapping row's value column (a raw string or
+  merge tag, rather than a form field) silently sent nothing for that field:
+  `send_to_ortto()` passed GF's literal `"gf_custom"` placeholder straight to
+  `get_field_value()`, which can't resolve it, so the value came back empty
+  and the row was dropped with no error. Now resolves `custom_value` (with
+  merge tags replaced) the same way GF's own
+  `GFAddOn::get_generic_map_fields()` does. No existing feed currently uses
+  "Custom Value" on the value column, so nothing was actually being lost in
+  practice, but this has been broken since 1.0.0.
 
 ## [1.4.2]
 
