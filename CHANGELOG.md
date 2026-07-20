@@ -5,6 +5,28 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+- Per-form **Tags** feed setting: apply one or more fixed tags
+  (comma-separated) in Ortto to every contact a form sends, regardless of
+  what was submitted. Tags are added on top of any tag pulled from a field
+  via the existing `tag` mapping key, and de-duplicated before sending.
+- Field mapping's Ortto field column is now a dropdown of common fields
+  (Email, First/Last name, Phone, City, State/region, Country, Postal code,
+  External ID) plus the existing Tag / Geolocation special actions, with a
+  **Custom field…** option for anything else (e.g. `str:cm:your-field`) --
+  instead of requiring every mapping to be hand-typed.
+
+### Fixed
+- Picking "Custom Value" for a mapping row's value column (a raw string or
+  merge tag, rather than a form field) silently sent nothing for that field:
+  `send_to_ortto()` passed GF's literal `"gf_custom"` placeholder straight to
+  `get_field_value()`, which can't resolve it, so the value came back empty
+  and the row was dropped with no error. Now resolves `custom_value` (with
+  merge tags replaced) the same way GF's own
+  `GFAddOn::get_generic_map_fields()` does. No existing feed currently uses
+  "Custom Value" on the value column, so nothing was actually being lost in
+  practice, but this has been broken since 1.0.0.
+
 ## [1.4.2]
 
 ### Fixed

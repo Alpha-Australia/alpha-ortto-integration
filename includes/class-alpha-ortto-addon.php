@@ -200,13 +200,78 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 						'label'       => 'Field mapping',
 						'type'        => 'generic_map',
 						'key_field'   => array(
-							'title'       => 'Ortto field',
-							'placeholder' => 'str::email',
+							'title'            => 'Ortto field',
+							'placeholder'      => 'str::email',
+							'custom'           => 'Custom field…',
+							'allow_duplicates' => true,
+							'choices'          => array(
+								array(
+									'label'   => 'Common Ortto fields',
+									'choices' => array(
+										array(
+											'label' => 'Email',
+											'value' => 'str::email',
+										),
+										array(
+											'label' => 'First name',
+											'value' => 'str::first',
+										),
+										array(
+											'label' => 'Last name',
+											'value' => 'str::last',
+										),
+										array(
+											'label' => 'Phone',
+											'value' => 'phn::phone',
+										),
+										array(
+											'label' => 'City',
+											'value' => 'geo::city',
+										),
+										array(
+											'label' => 'State / region',
+											'value' => 'geo::region',
+										),
+										array(
+											'label' => 'Country',
+											'value' => 'geo::country',
+										),
+										array(
+											'label' => 'Postal code',
+											'value' => 'str::postal',
+										),
+										array(
+											'label' => 'External ID',
+											'value' => 'str::ei',
+										),
+									),
+								),
+								array(
+									'label'   => 'Special actions',
+									'choices' => array(
+										array(
+											'label' => 'Tag',
+											'value' => 'tag',
+										),
+										array(
+											'label' => 'Geolocation (source IP)',
+											'value' => 'location.source_ip',
+										),
+									),
+								),
+							),
 						),
 						'value_field' => array(
 							'title' => 'Gravity Forms value',
 						),
-						'tooltip'     => 'Left column: an Ortto person field (str::email, str::first, str::last, or a custom field like str:cm:your-field that already exists in Ortto). Also supports the special keys location.source_ip (sends the value for geolocation) and tag (applies a tag to the contact). Right column: pick the Gravity Forms field or entry meta (IP address, date created, form title, etc.) to pull the value from.',
+						'tooltip'     => 'Left column: pick a common Ortto person field, a special action (Tag / Geolocation), or choose "Custom field…" to enter any other Ortto field id (e.g. a custom str:cm:your-field that already exists in Ortto). Right column: pick the Gravity Forms field or entry meta (IP address, date created, form title, etc.) to pull the value from.',
+					),
+					array(
+						'name'    => 'tags',
+						'label'   => 'Tags',
+						'type'    => 'text',
+						'class'   => 'medium',
+						'tooltip' => 'Fixed tag(s) applied in Ortto to every contact this form sends, regardless of what was submitted. Separate multiple tags with commas (e.g. "Life Essentials, Website lead"). These are added on top of any tag pulled from a field via the "tag" mapping key above.',
 					),
 					array(
 						'type'           => 'feed_condition',
@@ -302,14 +367,27 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 		$tags     = array();
 
 		foreach ( $mappings as $mapping ) {
-			$ortto_field = trim( rgar( $mapping, 'custom_key' ) );
+			// The key field offers a dropdown of common Ortto fields plus a
+			// "Custom field..." option; GF stores the literal string
+			// "gf_custom" as the key in that case, with the typed value in
+			// custom_key. A directly selected choice (e.g. "str::email")
+			// is stored in key itself.
+			$key         = rgar( $mapping, 'key' );
+			$ortto_field = trim( 'gf_custom' === $key ? rgar( $mapping, 'custom_key' ) : $key );
 			$source      = rgar( $mapping, 'value' );
 
 			if ( '' === $ortto_field || '' === $source ) {
 				continue;
 			}
 
-			$value = $this->get_field_value( $form, $entry, $source );
+			// The value field offers a dropdown of form fields plus "Custom
+			// Value...", which stores the literal string "gf_custom" as the
+			// value with the typed text (merge tags allowed) in custom_value.
+			if ( 'gf_custom' === $source ) {
+				$value = GFCommon::replace_variables( rgar( $mapping, 'custom_value' ), $form, $entry, false, false, false, 'text' );
+			} else {
+				$value = $this->get_field_value( $form, $entry, $source );
+			}
 
 			if ( '' === $value || null === $value ) {
 				continue;
@@ -338,8 +416,20 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 			$person['location'] = $location;
 		}
 
+		// Fixed feed-level tags applied to every submission (comma-separated),
+		// on top of any tag pulled from a mapped field above.
+		$static_tags = rgar( $feed['meta'], 'tags' );
+		if ( ! empty( $static_tags ) ) {
+			foreach ( explode( ',', $static_tags ) as $tag ) {
+				$tag = trim( $tag );
+				if ( '' !== $tag ) {
+					$tags[] = $tag;
+				}
+			}
+		}
+
 		if ( ! empty( $tags ) ) {
-			$person['tags'] = $tags;
+			$person['tags'] = array_values( array_unique( $tags ) );
 		}
 
 		$merge_by = rgar( $feed['meta'], 'mergeBy' );
