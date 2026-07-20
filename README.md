@@ -42,6 +42,15 @@ normal plugin updates in **Dashboard → Updates**.
 - **Field mapping** — left column is an Ortto field (`str::email`, `str::first`,
   a custom `str:cm:your-field`, or the special keys `location.source_ip` and
   `tag`); right column is the Gravity Forms field/meta to pull from.
+- **Form Submit Activity** — when enabled, also records a "Form Submit"
+  activity against the contact in Ortto whenever this feed sends
+  successfully, attached to the same contact via the same field mapping.
+  The activity id (below, defaults to `act:cm:form-submit`) must already
+  exist in Ortto (CDP → Activities) before enabling this, or the activity
+  call will fail (this never affects the contact sync itself). Off by
+  default for feeds that existed before this setting.
+- **Activity ID** — the Ortto custom activity id to record, if Form Submit
+  Activity is enabled.
 - **Condition** — optionally only send entries that meet a condition.
 
 ## Development
