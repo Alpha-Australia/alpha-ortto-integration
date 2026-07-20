@@ -34,6 +34,8 @@ normal plugin updates in **Dashboard → Updates**.
 - **Ortto Private API Key** — from Ortto: Data sources → your Custom API data
   source → Configuration.
 - **Region** — only if your Ortto account is on a regional instance (AU/EU).
+- **Enable Web Session Linking** / **Web Session Field ID** — see
+  [Web session linking](#web-session-linking) below.
 
 **Per-form** (Forms → [Form] → Settings → Ortto):
 
@@ -58,6 +60,34 @@ normal plugin updates in **Dashboard → Updates**.
 - **Activity ID** — the Ortto custom activity id to record, if Form Submit
   Activity is enabled.
 - **Condition** — optionally only send entries that meet a condition.
+
+## Web session linking
+
+Ties a visitor's anonymous Ortto tracking-code session to the contact
+identified when they submit a Gravity Form, so their prior browsing history
+shows up on the contact's timeline once known. Ortto only does this when both
+sides (the browser and the server-side submission) agree on the value of a
+custom field configured in Ortto as an **allowed tracking-code merge key** —
+there's no way to just post a raw session id to the merge API.
+
+Setup, once **Enable Web Session Linking** is turned on:
+
+1. **In Ortto**: Settings → Tracking code → Allowed custom field as merge key
+   → Edit → Add field. Choose (or create) a custom field, e.g.
+   `str:cm:web-session`, and set the same id as the **Web Session Field ID**
+   setting above (defaults to `str:cm:web-session`).
+2. **On each form** that should link sessions: add a **Hidden** field, and set
+   its **Default Value** to exactly `ortto-web-session` (this sentinel string
+   is how the plugin's script finds which field to populate — it's not
+   user-configurable).
+3. In that form's Ortto feed, map the Hidden field (right column) to the same
+   Ortto field id from step 1 (left column, via **Custom field…**).
+
+From there it's automatic: whenever the form renders, a small enqueued script
+mints (or reuses) a per-browser id, writes it into the Hidden field, and tags
+the current Ortto tracking session with it via `ap3c.track()`. On submit, that
+same id flows through the existing field mapping — no extra plugin code
+involved — and Ortto merges the browsing history in.
 
 ## Development
 

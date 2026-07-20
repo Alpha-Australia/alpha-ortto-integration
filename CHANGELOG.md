@@ -6,6 +6,18 @@ All notable changes to this plugin are documented here. This project follows
 ## [Unreleased]
 
 ### Added
+- Web session linking: ties a visitor's anonymous Ortto tracking-code
+  session to the contact identified on form submit, via a new
+  account-wide "Enable Web Session Linking" + "Web Session Field ID"
+  setting. When enabled, a small script (enqueued only on pages rendering
+  a Gravity Form) mints or reuses a per-browser id, writes it into any
+  Hidden field whose Default Value is set to the documented sentinel
+  string, and tags the current Ortto tracking session with it via
+  `ap3c.track()`. That field then just needs mapping to the configured
+  Ortto field id (already configured in Ortto as an allowed tracking-code
+  merge key) in the form's existing field mapping -- no other plugin code
+  is involved once that's wired up. See the README's "Web session
+  linking" section for the full setup recipe. Off by default.
 - Per-form **Form Submit Activity** setting: when enabled, also records a
   custom "Form Submit" activity against the contact in Ortto (a separate
   call to `v1/activities/create`) whenever the feed sends successfully, with

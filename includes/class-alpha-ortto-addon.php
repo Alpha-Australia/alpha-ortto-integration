@@ -58,6 +58,22 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 	const RESEND_NONCE = 'alpha_ortto_resend';
 
 	/**
+	 * Default Ortto custom field id used to link a visitor's anonymous
+	 * tracking-code session to the contact identified on form submit,
+	 * unless overridden via the account-wide "Web Session Field ID"
+	 * setting. Must already be configured in Ortto as an allowed
+	 * tracking-code merge key custom field.
+	 */
+	const DEFAULT_WEB_SESSION_FIELD = 'str:cm:web-session';
+
+	/**
+	 * Sentinel string editors set as a Hidden field's Default Value to mark
+	 * it as the field the web-session JS should populate. Documented in the
+	 * README setup recipe; not user-configurable.
+	 */
+	const WEB_SESSION_SENTINEL = 'ortto-web-session';
+
+	/**
 	 * @return Alpha_Ortto_AddOn
 	 */
 	public static function get_instance() {
@@ -76,6 +92,7 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 
 		add_filter( 'gform_entry_detail_meta_boxes', array( $this, 'register_entry_meta_box' ), 10, 3 );
 		add_action( 'wp_ajax_alpha_ortto_resend', array( $this, 'ajax_resend' ) );
+		add_action( 'gform_enqueue_scripts', array( $this, 'maybe_enqueue_web_session_script' ), 10, 2 );
 	}
 
 	/**
@@ -83,6 +100,42 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 	 */
 	public function get_menu_icon() {
 		return 'dashicons-email-alt2';
+	}
+
+	/**
+	 * Enqueue the web-session-linking script whenever a form renders, if
+	 * enabled. The script itself is a no-op on any page without a Hidden
+	 * field carrying the documented sentinel default value, so this is safe
+	 * to enqueue broadly rather than needing to know in advance whether the
+	 * current form's feed actually uses it.
+	 *
+	 * @param array $form    The Form Object being rendered.
+	 * @param bool  $is_ajax Whether the form is rendering via AJAX.
+	 */
+	public function maybe_enqueue_web_session_script( $form, $is_ajax ) {
+
+		$settings = $this->get_plugin_settings();
+
+		if ( empty( $settings['web_session_enabled'] ) ) {
+			return;
+		}
+
+		wp_enqueue_script(
+			'alpha-ortto-web-session',
+			plugins_url( '../assets/js/web-session.js', __FILE__ ),
+			array(),
+			$this->_version,
+			true
+		);
+
+		wp_localize_script(
+			'alpha-ortto-web-session',
+			'AlphaOrttoWebSession',
+			array(
+				'field'    => rgar( $settings, 'web_session_field', self::DEFAULT_WEB_SESSION_FIELD ),
+				'sentinel' => self::WEB_SESSION_SENTINEL,
+			)
+		);
 	}
 
 	// # PLUGIN (GLOBAL) SETTINGS ---------------------------------------------------------------
@@ -126,6 +179,25 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 							),
 						),
 						'tooltip' => 'Only relevant if your Ortto account is on a regional instance (check Ortto Settings -> Data sources -> API key).',
+					),
+				),
+			),
+			array(
+				'title'  => 'Web Session Linking',
+				'fields' => array(
+					array(
+						'name'    => 'web_session_enabled',
+						'label'   => 'Enable Web Session Linking',
+						'type'    => 'toggle',
+						'tooltip' => 'Ties a visitor\'s anonymous Ortto tracking-code session to the contact identified when they submit a Gravity Form, so their prior browsing history shows up on the contact\'s timeline once known. Requires setup in Ortto first (Tracking code -> Allowed custom field as merge key -> add the field below), plus a Hidden field on each participating form with its Default Value set to "' . esc_html( self::WEB_SESSION_SENTINEL ) . '", mapped as a Custom field to the field id below in that form\'s Ortto feed. See the plugin README for the full setup recipe. Off by default -- turning this on before the Ortto-side merge key is configured is harmless, but won\'t link anything.',
+					),
+					array(
+						'name'          => 'web_session_field',
+						'label'         => 'Web Session Field ID',
+						'type'          => 'text',
+						'class'         => 'medium',
+						'default_value' => self::DEFAULT_WEB_SESSION_FIELD,
+						'tooltip'       => 'The Ortto custom field id configured as an allowed tracking-code merge key (Ortto: Tracking code -> Allowed custom field as merge key), e.g. str:cm:web-session.',
 					),
 				),
 			),
