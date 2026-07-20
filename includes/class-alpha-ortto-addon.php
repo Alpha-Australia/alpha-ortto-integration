@@ -200,13 +200,71 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 						'label'       => 'Field mapping',
 						'type'        => 'generic_map',
 						'key_field'   => array(
-							'title'       => 'Ortto field',
-							'placeholder' => 'str::email',
+							'title'            => 'Ortto field',
+							'placeholder'      => 'str::email',
+							'custom'           => 'Custom field…',
+							'allow_duplicates' => true,
+							'choices'          => array(
+								array(
+									'label'   => 'Common Ortto fields',
+									'choices' => array(
+										array(
+											'label' => 'Email',
+											'value' => 'str::email',
+										),
+										array(
+											'label' => 'First name',
+											'value' => 'str::first',
+										),
+										array(
+											'label' => 'Last name',
+											'value' => 'str::last',
+										),
+										array(
+											'label' => 'Phone',
+											'value' => 'phn::phone',
+										),
+										array(
+											'label' => 'City',
+											'value' => 'geo::city',
+										),
+										array(
+											'label' => 'State / region',
+											'value' => 'geo::region',
+										),
+										array(
+											'label' => 'Country',
+											'value' => 'geo::country',
+										),
+										array(
+											'label' => 'Postal code',
+											'value' => 'str::postal',
+										),
+										array(
+											'label' => 'External ID',
+											'value' => 'str::ei',
+										),
+									),
+								),
+								array(
+									'label'   => 'Special actions',
+									'choices' => array(
+										array(
+											'label' => 'Tag',
+											'value' => 'tag',
+										),
+										array(
+											'label' => 'Geolocation (source IP)',
+											'value' => 'location.source_ip',
+										),
+									),
+								),
+							),
 						),
 						'value_field' => array(
 							'title' => 'Gravity Forms value',
 						),
-						'tooltip'     => 'Left column: an Ortto person field (str::email, str::first, str::last, or a custom field like str:cm:your-field that already exists in Ortto). Also supports the special keys location.source_ip (sends the value for geolocation) and tag (applies a tag to the contact). Right column: pick the Gravity Forms field or entry meta (IP address, date created, form title, etc.) to pull the value from.',
+						'tooltip'     => 'Left column: pick a common Ortto person field, a special action (Tag / Geolocation), or choose "Custom field…" to enter any other Ortto field id (e.g. a custom str:cm:your-field that already exists in Ortto). Right column: pick the Gravity Forms field or entry meta (IP address, date created, form title, etc.) to pull the value from.',
 					),
 					array(
 						'name'    => 'tags',
@@ -309,7 +367,13 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 		$tags     = array();
 
 		foreach ( $mappings as $mapping ) {
-			$ortto_field = trim( rgar( $mapping, 'custom_key' ) );
+			// The key field offers a dropdown of common Ortto fields plus a
+			// "Custom field..." option; GF stores the literal string
+			// "gf_custom" as the key in that case, with the typed value in
+			// custom_key. A directly selected choice (e.g. "str::email")
+			// is stored in key itself.
+			$key         = rgar( $mapping, 'key' );
+			$ortto_field = trim( 'gf_custom' === $key ? rgar( $mapping, 'custom_key' ) : $key );
 			$source      = rgar( $mapping, 'value' );
 
 			if ( '' === $ortto_field || '' === $source ) {

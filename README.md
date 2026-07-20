@@ -39,9 +39,12 @@ normal plugin updates in **Dashboard → Updates**.
 
 - **Merge by** — the Ortto field used to match existing contacts (usually
   `str::email`).
-- **Field mapping** — left column is an Ortto field (`str::email`, `str::first`,
-  a custom `str:cm:your-field`, or the special keys `location.source_ip` and
-  `tag`); right column is the Gravity Forms field/meta to pull from.
+- **Field mapping** — left column is a dropdown of common Ortto fields
+  (Email, First name, Last name, Phone, City, State/region, Country, Postal
+  code, External ID), the special actions `Tag` and `Geolocation (source IP)`,
+  or **Custom field…** to type any other Ortto field id (e.g. a custom
+  `str:cm:your-field`); right column is the Gravity Forms field/meta to pull
+  from.
 - **Tags** — fixed tag(s) applied to every contact this form sends, regardless
   of what was submitted. Separate multiple tags with commas. Added on top of any
   tag pulled from a field via the `tag` mapping key.

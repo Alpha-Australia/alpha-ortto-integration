@@ -10,6 +10,11 @@ All notable changes to this plugin are documented here. This project follows
   (comma-separated) in Ortto to every contact a form sends, regardless of
   what was submitted. Tags are added on top of any tag pulled from a field
   via the existing `tag` mapping key, and de-duplicated before sending.
+- Field mapping's Ortto field column is now a dropdown of common fields
+  (Email, First/Last name, Phone, City, State/region, Country, Postal code,
+  External ID) plus the existing Tag / Geolocation special actions, with a
+  **Custom field…** option for anything else (e.g. `str:cm:your-field`) --
+  instead of requiring every mapping to be hand-typed.
 
 ## [1.4.2]
 
