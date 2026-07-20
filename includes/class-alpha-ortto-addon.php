@@ -39,6 +39,20 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 	const STATUS_META_KEY = 'alpha_ortto_status';
 
 	/**
+	 * Entry meta key under which per-feed "Form Submit" activity send
+	 * status is stored (separate from STATUS_META_KEY, which only ever
+	 * covers the person merge call).
+	 */
+	const ACTIVITY_STATUS_META_KEY = 'alpha_ortto_activity_status';
+
+	/**
+	 * Default Ortto custom activity id used for the "Form Submit" activity,
+	 * unless a feed overrides it. Must already exist in Ortto (CDP ->
+	 * Activities) before events sent to it will be accepted.
+	 */
+	const DEFAULT_ACTIVITY_ID = 'act:cm:form-submit';
+
+	/**
 	 * Nonce action used by the entry-detail Resend button.
 	 */
 	const RESEND_NONCE = 'alpha_ortto_resend';
@@ -274,6 +288,21 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 						'tooltip' => 'Fixed tag(s) applied in Ortto to every contact this form sends, regardless of what was submitted. Separate multiple tags with commas (e.g. "Life Essentials, Website lead"). These are added on top of any tag pulled from a field via the "tag" mapping key above.',
 					),
 					array(
+						'name'          => 'sendActivity',
+						'label'         => 'Form Submit Activity',
+						'type'          => 'toggle',
+						'default_value' => 1,
+						'tooltip'       => 'When enabled, also records a "Form Submit" activity against the contact in Ortto (a separate call to v1/activities/create), so the submission appears on their activity timeline and can trigger journeys. The activity id below must already exist in Ortto (CDP -> Activities) or the activity call will fail -- this never affects the contact sync itself, which is unaffected either way. Off by default for feeds that existed before this setting, since enabling it retroactively for every feed at once could hit a large number of accounts before the activity exists in Ortto.',
+					),
+					array(
+						'name'          => 'activityId',
+						'label'         => 'Activity ID',
+						'type'          => 'text',
+						'class'         => 'medium',
+						'default_value' => self::DEFAULT_ACTIVITY_ID,
+						'tooltip'       => 'The Ortto custom activity id to record (CDP -> Activities -> your activity -> the id shown there). Must already exist in Ortto.',
+					),
+					array(
 						'type'           => 'feed_condition',
 						'name'           => 'feedCondition',
 						'label'          => 'Condition',
@@ -320,38 +349,37 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 			return false;
 		}
 
+		if ( $this->feed_sends_activity( $feed ) ) {
+			$activity_result = $this->send_activity_to_ortto( $feed, $entry, $form );
+
+			$this->record_activity_status( $entry, $feed, $activity_result );
+
+			// The activity is secondary to the contact sync above: log it as
+			// a visible warning on the entry, but don't fail the feed over it.
+			if ( ! $activity_result['success'] ) {
+				$this->add_feed_error( 'Form Submit activity: ' . $activity_result['message'], $feed, $entry, $form );
+			}
+		}
+
 		return true;
 	}
 
 	/**
-	 * Build the Ortto payload from the feed's field mapping and send it to
-	 * Ortto's v1/person/merge endpoint.
-	 *
-	 * Shared by the on-submission processing and the manual resend so both
-	 * paths behave identically.
+	 * Resolve a feed's field mapping into the Ortto fields, location, and
+	 * tags it produces for a given entry. Shared by the person merge and the
+	 * Form Submit activity call so both target the same identity.
 	 *
 	 * @param array $feed  The Feed Object.
 	 * @param array $entry The Entry Object.
 	 * @param array $form  The Form Object.
 	 *
 	 * @return array {
-	 *     @type bool   $success Whether Ortto accepted the request.
-	 *     @type int    $code    HTTP status code (0 if the request never left).
-	 *     @type string $message Human-readable outcome (error detail on failure).
+	 *     @type array $fields   Ortto field id => value.
+	 *     @type array $location Geolocation data, e.g. array( 'source_ip' => ... ).
+	 *     @type array $tags     Tags pulled from mapped fields (not including feed-level static tags).
 	 * }
 	 */
-	public function send_to_ortto( $feed, $entry, $form ) {
-
-		$settings = $this->get_plugin_settings();
-		$api_key  = rgar( $settings, 'api_key' );
-
-		if ( empty( $api_key ) ) {
-			return array(
-				'success' => false,
-				'code'    => 0,
-				'message' => 'Ortto API key is not configured. Go to Forms -> Settings -> Ortto to add it.',
-			);
-		}
+	private function resolve_feed_mapping( $feed, $entry, $form ) {
 
 		// Read the raw mapping rows rather than GFAddOn::get_generic_map_fields(),
 		// which (when called without $form/$entry) returns a flattened,
@@ -401,6 +429,48 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 				$fields[ $ortto_field ] = $value;
 			}
 		}
+
+		return array(
+			'fields'   => $fields,
+			'location' => $location,
+			'tags'     => $tags,
+		);
+	}
+
+	/**
+	 * Build the Ortto payload from the feed's field mapping and send it to
+	 * Ortto's v1/person/merge endpoint.
+	 *
+	 * Shared by the on-submission processing and the manual resend so both
+	 * paths behave identically.
+	 *
+	 * @param array $feed  The Feed Object.
+	 * @param array $entry The Entry Object.
+	 * @param array $form  The Form Object.
+	 *
+	 * @return array {
+	 *     @type bool   $success Whether Ortto accepted the request.
+	 *     @type int    $code    HTTP status code (0 if the request never left).
+	 *     @type string $message Human-readable outcome (error detail on failure).
+	 * }
+	 */
+	public function send_to_ortto( $feed, $entry, $form ) {
+
+		$settings = $this->get_plugin_settings();
+		$api_key  = rgar( $settings, 'api_key' );
+
+		if ( empty( $api_key ) ) {
+			return array(
+				'success' => false,
+				'code'    => 0,
+				'message' => 'Ortto API key is not configured. Go to Forms -> Settings -> Ortto to add it.',
+			);
+		}
+
+		$mapped   = $this->resolve_feed_mapping( $feed, $entry, $form );
+		$fields   = $mapped['fields'];
+		$location = $mapped['location'];
+		$tags     = $mapped['tags'];
 
 		if ( empty( $fields ) ) {
 			return array(
@@ -487,6 +557,127 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 	}
 
 	/**
+	 * Whether this feed is configured to send a "Form Submit" activity.
+	 * Defaults to on only for feeds saved through the UI since this setting
+	 * was introduced (see the "sendActivity" field's default_value); feeds
+	 * saved before then have no value stored and default to off, so
+	 * enabling this doesn't retroactively start firing activity calls for
+	 * every existing feed at once.
+	 *
+	 * @param array $feed The Feed Object.
+	 *
+	 * @return bool
+	 */
+	private function feed_sends_activity( $feed ) {
+		return (bool) rgar( $feed['meta'], 'sendActivity' );
+	}
+
+	/**
+	 * Record a "Form Submit" activity against the same contact the merge
+	 * call targeted, via Ortto's v1/activities/create endpoint.
+	 *
+	 * @param array $feed  The Feed Object.
+	 * @param array $entry The Entry Object.
+	 * @param array $form  The Form Object.
+	 *
+	 * @return array Same shape as send_to_ortto()'s return value.
+	 */
+	private function send_activity_to_ortto( $feed, $entry, $form ) {
+
+		$settings = $this->get_plugin_settings();
+		$api_key  = rgar( $settings, 'api_key' );
+
+		if ( empty( $api_key ) ) {
+			return array(
+				'success' => false,
+				'code'    => 0,
+				'message' => 'Ortto API key is not configured. Go to Forms -> Settings -> Ortto to add it.',
+			);
+		}
+
+		// Reuse the same identity the merge call resolved, so the activity
+		// attaches to the same contact.
+		$mapped = $this->resolve_feed_mapping( $feed, $entry, $form );
+
+		if ( empty( $mapped['fields'] ) ) {
+			return array(
+				'success' => false,
+				'code'    => 0,
+				'message' => 'No Ortto fields resolved to a value for this entry; activity not sent.',
+			);
+		}
+
+		$activity_id = trim( rgar( $feed['meta'], 'activityId' ) );
+		if ( '' === $activity_id ) {
+			$activity_id = self::DEFAULT_ACTIVITY_ID;
+		}
+
+		$activity = array(
+			'activity_id' => $activity_id,
+			'attributes'  => array(
+				'str:cm:form-name' => (string) rgar( $form, 'title' ),
+				'int:cm:form-id'   => (int) rgar( $form, 'id' ),
+				'str:cm:entry-id'  => (string) rgar( $entry, 'id' ),
+			),
+			'fields'      => $mapped['fields'],
+		);
+
+		if ( ! empty( $mapped['location'] ) ) {
+			$activity['location'] = $mapped['location'];
+		}
+
+		$merge_by = rgar( $feed['meta'], 'mergeBy' );
+		if ( empty( $merge_by ) ) {
+			$merge_by = 'str::email';
+		}
+
+		$body = array(
+			'activities' => array( $activity ),
+			'merge_by'   => array( $merge_by ),
+		);
+
+		$region    = rgar( $settings, 'region' );
+		$subdomain = $region ? $region . '.' : '';
+		$url       = "https://api.{$subdomain}ap3api.com/v1/activities/create";
+
+		$response = wp_remote_post(
+			$url,
+			array(
+				'headers' => array(
+					'X-Api-Key'    => $api_key,
+					'Content-Type' => 'application/json',
+				),
+				'body'    => wp_json_encode( $body ),
+				'timeout' => 15,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return array(
+				'success' => false,
+				'code'    => 0,
+				'message' => 'Ortto activity request failed: ' . $response->get_error_message(),
+			);
+		}
+
+		$code = (int) wp_remote_retrieve_response_code( $response );
+
+		if ( $code < 200 || $code >= 300 ) {
+			return array(
+				'success' => false,
+				'code'    => $code,
+				'message' => 'Ortto activity returned HTTP ' . $code . ': ' . wp_remote_retrieve_body( $response ),
+			);
+		}
+
+		return array(
+			'success' => true,
+			'code'    => $code,
+			'message' => 'Activity sent to Ortto (HTTP ' . $code . ').',
+		);
+	}
+
+	/**
 	 * Store the outcome of a send against the entry, keyed by feed id, so the
 	 * entry-detail meta box can show status and offer a resend.
 	 *
@@ -495,13 +686,40 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 	 * @param array $result Result array from send_to_ortto().
 	 */
 	private function record_feed_status( $entry, $feed, $result ) {
+		$this->store_status( self::STATUS_META_KEY, $entry, $feed, $result );
+	}
+
+	/**
+	 * Store the outcome of a "Form Submit" activity send against the entry,
+	 * separately from the contact sync status recorded by
+	 * record_feed_status().
+	 *
+	 * @param array $entry  The Entry Object.
+	 * @param array $feed   The Feed Object.
+	 * @param array $result Result array from send_activity_to_ortto().
+	 */
+	private function record_activity_status( $entry, $feed, $result ) {
+		$this->store_status( self::ACTIVITY_STATUS_META_KEY, $entry, $feed, $result );
+	}
+
+	/**
+	 * Shared implementation for record_feed_status() and
+	 * record_activity_status(): stores a per-feed send outcome, keyed by
+	 * feed id, under the given entry meta key.
+	 *
+	 * @param string $meta_key Entry meta key to store under.
+	 * @param array  $entry    The Entry Object.
+	 * @param array  $feed     The Feed Object.
+	 * @param array  $result   Result array from a send_*() method.
+	 */
+	private function store_status( $meta_key, $entry, $feed, $result ) {
 
 		$entry_id = rgar( $entry, 'id' );
 		if ( empty( $entry_id ) ) {
 			return;
 		}
 
-		$statuses = gform_get_meta( $entry_id, self::STATUS_META_KEY );
+		$statuses = gform_get_meta( $entry_id, $meta_key );
 		if ( ! is_array( $statuses ) ) {
 			$statuses = array();
 		}
@@ -514,7 +732,7 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 			'user_id'   => get_current_user_id(),
 		);
 
-		gform_update_meta( $entry_id, self::STATUS_META_KEY, $statuses, rgar( $entry, 'form_id' ) );
+		gform_update_meta( $entry_id, $meta_key, $statuses, rgar( $entry, 'form_id' ) );
 	}
 
 	// # ENTRY DETAIL: STATUS + RESEND -----------------------------------------------------------
@@ -586,11 +804,6 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 		$entry_id = (int) rgar( $entry, 'id' );
 		$feeds    = $this->get_active_feeds_for_form( rgar( $form, 'id' ) );
 
-		$statuses = gform_get_meta( $entry_id, self::STATUS_META_KEY );
-		if ( ! is_array( $statuses ) ) {
-			$statuses = array();
-		}
-
 		$nonce = wp_create_nonce( self::RESEND_NONCE );
 
 		echo '<div class="alpha-ortto-metabox">';
@@ -602,12 +815,10 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 				$name = 'Feed #' . $feed_id;
 			}
 
-			$status = rgar( $statuses, $feed_id );
-
 			echo '<div class="alpha-ortto-feed" style="padding:8px 0;border-bottom:1px solid #f0f0f1;">';
 			echo '<strong>' . esc_html( $name ) . '</strong><br />';
 			echo '<span class="alpha-ortto-status" id="alpha-ortto-status-' . esc_attr( $feed_id ) . '">'
-				. wp_kses_post( $this->format_status_html( $status ) )
+				. wp_kses_post( $this->render_feed_status_html( $feed, $entry_id ) )
 				. '</span>';
 
 			printf(
@@ -622,6 +833,39 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 		echo '</div>';
 
 		$this->print_resend_script( $nonce );
+	}
+
+	/**
+	 * Build the combined status HTML for one feed: the contact sync status,
+	 * plus (if this feed sends one) the Form Submit activity status below
+	 * it. Shared by the initial meta box render and the AJAX resend
+	 * response so both look identical.
+	 *
+	 * @param array $feed     The Feed Object.
+	 * @param int   $entry_id Entry id.
+	 *
+	 * @return string
+	 */
+	private function render_feed_status_html( $feed, $entry_id ) {
+
+		$feed_id = (string) $feed['id'];
+
+		$statuses = gform_get_meta( $entry_id, self::STATUS_META_KEY );
+		$status   = is_array( $statuses ) ? rgar( $statuses, $feed_id ) : false;
+
+		$html = $this->format_status_html( $status );
+
+		if ( $this->feed_sends_activity( $feed ) ) {
+			$activity_statuses = gform_get_meta( $entry_id, self::ACTIVITY_STATUS_META_KEY );
+			$activity_status   = is_array( $activity_statuses ) ? rgar( $activity_statuses, $feed_id ) : false;
+
+			$html .= '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #f0f0f1;">'
+				. '<span style="color:#646970;">Form Submit activity:</span> '
+				. $this->format_status_html( $activity_status )
+				. '</div>';
+		}
+
+		return $html;
 	}
 
 	/**
@@ -764,17 +1008,22 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 		}
 		$this->add_resend_note( $entry_id, $feed_name, $result );
 
-		$statuses = gform_get_meta( $entry_id, self::STATUS_META_KEY );
-		$status   = is_array( $statuses ) ? rgar( $statuses, (string) $feed_id ) : false;
+		if ( $result['success'] && $this->feed_sends_activity( $feed ) ) {
+			$activity_result = $this->send_activity_to_ortto( $feed, $entry, $form );
+			$this->record_activity_status( $entry, $feed, $activity_result );
+			$this->add_resend_note( $entry_id, $feed_name . ' (Form Submit activity)', $activity_result );
+		}
+
+		$html = $this->render_feed_status_html( $feed, $entry_id );
 
 		if ( $result['success'] ) {
-			wp_send_json_success( array( 'html' => $this->format_status_html( $status ) ) );
+			wp_send_json_success( array( 'html' => $html ) );
 		}
 
 		wp_send_json_error(
 			array(
 				'message' => $result['message'],
-				'html'    => $this->format_status_html( $status ),
+				'html'    => $html,
 			)
 		);
 	}
