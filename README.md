@@ -53,7 +53,7 @@ normal plugin updates in **Dashboard → Updates**.
 - **Form Submit Activity** — when enabled, also records a "Form Submit"
   activity against the contact in Ortto whenever this feed sends
   successfully, attached to the same contact via the same field mapping.
-  The activity id (below, defaults to `act:cm:form-submit`) must already
+  The activity id (below, defaults to `act:cm:submitted-web-form`) must already
   exist in Ortto (CDP → Activities) before enabling this, or the activity
   call will fail (this never affects the contact sync itself). Off by
   default for feeds that existed before this setting.
