@@ -50,7 +50,7 @@ class Alpha_Ortto_AddOn extends GFFeedAddOn {
 	 * unless a feed overrides it. Must already exist in Ortto (CDP ->
 	 * Activities) before events sent to it will be accepted.
 	 */
-	const DEFAULT_ACTIVITY_ID = 'act:cm:form-submit';
+	const DEFAULT_ACTIVITY_ID = 'act:cm:submitted-web-form';
 
 	/**
 	 * Nonce action used by the entry-detail Resend button.

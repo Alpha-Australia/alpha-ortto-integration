@@ -26,7 +26,7 @@ All notable changes to this plugin are documented here. This project follows
   `str:cm:form-name`, `int:cm:form-id`, and `str:cm:entry-id` attributes.
   Attaches to the same contact the person merge targeted, and reuses any
   geolocation mapped via `location.source_ip`. The activity id is
-  configurable per feed (defaults to `act:cm:form-submit`) and must already
+  configurable per feed (defaults to `act:cm:submitted-web-form`) and must already
   exist in Ortto (CDP -> Activities) or the activity call will fail --
   this never affects the contact sync itself. The entry-detail meta box
   and Resend button now cover the activity send alongside the contact
