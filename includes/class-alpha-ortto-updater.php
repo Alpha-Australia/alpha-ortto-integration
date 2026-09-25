@@ -89,6 +89,11 @@ class Alpha_Ortto_Updater {
 	private $cache_ttl = HOUR_IN_SECONDS * 6;
 
 	/**
+	 * Cached in place of a release when the GitHub API call fails.
+	 */
+	const FAILED = 'failed';
+
+	/**
 	 * @param string $file Absolute path to the main plugin file (__FILE__).
 	 */
 	public function __construct( $file ) {
@@ -144,6 +149,10 @@ class Alpha_Ortto_Updater {
 
 		if ( ! $force_check ) {
 			$cached = get_transient( $cache_key );
+			if ( self::FAILED === $cached ) {
+				$this->github_response = false;
+				return false;
+			}
 			if ( false !== $cached ) {
 				$this->github_response = $cached;
 				return $this->github_response;
@@ -171,24 +180,42 @@ class Alpha_Ortto_Updater {
 		$response = wp_remote_get( $request_uri, $args );
 
 		if ( is_wp_error( $response ) || 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
-			// Cache the failure briefly so we don't retry on every page load.
-			set_transient( $cache_key, false, MINUTE_IN_SECONDS * 15 );
-			$this->github_response = false;
-			return false;
+			$reason = is_wp_error( $response ) ? $response->get_error_message() : 'HTTP ' . wp_remote_retrieve_response_code( $response );
+			return $this->fail( $cache_key, $reason );
 		}
 
 		$data = json_decode( wp_remote_retrieve_body( $response ) );
 
 		if ( ! is_object( $data ) || empty( $data->tag_name ) ) {
-			set_transient( $cache_key, false, MINUTE_IN_SECONDS * 15 );
-			$this->github_response = false;
-			return false;
+			return $this->fail( $cache_key, 'response had no tag_name' );
 		}
 
 		set_transient( $cache_key, $data, $this->cache_ttl );
 		$this->github_response = $data;
 
 		return $data;
+	}
+
+	/**
+	 * Record a failed GitHub API call: log why, and cache the failure briefly
+	 * so we don't retry on every page load.
+	 *
+	 * This caches a sentinel string rather than `false`, because
+	 * get_transient() also returns `false` for a missing or expired
+	 * transient -- a cached `false` was indistinguishable from "nothing
+	 * cached", so failures were never actually cached and every check hit
+	 * GitHub again (and failed silently) instead.
+	 *
+	 * @param string $cache_key Transient key.
+	 * @param string $reason    Why the call failed, for the error log.
+	 * @return false
+	 */
+	private function fail( $cache_key, $reason ) {
+		error_log( sprintf( '[Alpha Ortto Integration] Update check against GitHub (%s/%s) failed: %s', $this->username, $this->repository, $reason ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- a failed update check should be visible, and is capped to once per 15 minutes by the cache below.
+		set_transient( $cache_key, self::FAILED, MINUTE_IN_SECONDS * 15 );
+		$this->github_response = false;
+
+		return false;
 	}
 
 	/**
@@ -265,6 +292,12 @@ class Alpha_Ortto_Updater {
 			$transient->response[ $this->basename ] = $update;
 		} else {
 			// Report "no update" so the Plugins screen shows current state.
+			// Describe the installed version, not the latest release: a
+			// pre-release installed by hand (e.g. 1.5.0-rc.2) is newer than
+			// GitHub's "latest" (which skips pre-releases, e.g. 1.4.2), and
+			// shouldn't be listed against an older version and package.
+			$update->new_version                     = $this->version;
+			$update->package                         = '';
 			$transient->no_update[ $this->basename ] = $update;
 		}
 
