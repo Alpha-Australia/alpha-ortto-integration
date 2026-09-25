@@ -76,21 +76,35 @@
 		window.jQuery( document ).on( 'gform_post_render', fillHiddenFields );
 	}
 
+	// ap3c.track() exists as soon as Ortto's app.js has loaded, but it can't
+	// send anything until ap3c.init() has run: it posts to
+	// ap3c.apiHost + '-/events/page-event', and apiHost is only set by init.
+	// Called too early, the URL comes out as "undefined-/events/page-event",
+	// which the browser resolves relative to the current page and 404s. On
+	// this site app.js is loaded by the Autopilot plugin but init() comes
+	// later, from the Ortto snippet in GTM. uniqueID + apiHost is the same
+	// check init() itself uses to tell it has already run.
+	function orttoReady() {
+		var ap3c = window.ap3c;
+		return !! ( ap3c && typeof ap3c.track === 'function' && ap3c.uniqueID && ap3c.apiHost );
+	}
+
 	function tagOrttoSession() {
-		if ( window.ap3c && typeof window.ap3c.track === 'function' ) {
+		if ( orttoReady() ) {
 			window.ap3c.track( { ac: [ { fi: FIELD_ID, v: sessionId } ] } );
 			return true;
 		}
 		return false;
 	}
 
-	// The tracking code may still be loading when this script runs; retry
-	// briefly rather than requiring a strict load order.
+	// The tracking code may still be loading (or waiting on GTM to init it)
+	// when this script runs; retry for up to 15 seconds rather than requiring
+	// a strict load order.
 	if ( ! tagOrttoSession() ) {
 		var attempts = 0;
 		var interval = setInterval( function () {
 			attempts++;
-			if ( tagOrttoSession() || attempts > 20 ) {
+			if ( tagOrttoSession() || attempts >= 60 ) {
 				clearInterval( interval );
 			}
 		}, 250 );
