@@ -5,25 +5,6 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
-### Fixed
-- Web session linking no longer calls `ap3c.track()` before Ortto's
-  tracking code has been initialised. `track()` exists as soon as `app.js`
-  loads, but until `ap3c.init()` runs it posts to
-  `undefined-/events/page-event` (relative to the current page), which
-  404s and logs an XHR error in the console on every page with a form. The
-  script now waits for `init()` to have run, for up to 15 seconds.
-- Self-updater now also runs during WP-Cron and WP-CLI update checks, not
-  just in wp-admin. Previously the twice-daily `wp_update_plugins` cron
-  event rewrote the update transient without this plugin's entry, so an
-  available update would appear after an admin visit and then disappear.
-- Failed GitHub API calls are now logged and actually cached for 15
-  minutes. The failure was cached as `false`, which `get_transient()` can't
-  tell apart from "nothing cached", so every check retried and failed
-  silently.
-- When the installed version is newer than GitHub's latest release (e.g. a
-  hand-installed pre-release), the Plugins screen no longer lists it
-  against the older release's version and package.
-
 ## [1.5.0]
 
 ### Added
@@ -72,6 +53,23 @@ All notable changes to this plugin are documented here. This project follows
   `GFAddOn::get_generic_map_fields()` does. No existing feed currently uses
   "Custom Value" on the value column, so nothing was actually being lost in
   practice, but this has been broken since 1.0.0.
+- Web session linking no longer calls `ap3c.track()` before Ortto's
+  tracking code has been initialised. `track()` exists as soon as `app.js`
+  loads, but until `ap3c.init()` runs it posts to
+  `undefined-/events/page-event` (relative to the current page), which
+  404s and logs an XHR error in the console on every page with a form. The
+  script now waits for `init()` to have run, for up to 15 seconds.
+- Self-updater now also runs during WP-Cron and WP-CLI update checks, not
+  just in wp-admin. Previously the twice-daily `wp_update_plugins` cron
+  event rewrote the update transient without this plugin's entry, so an
+  available update would appear after an admin visit and then disappear.
+- Failed GitHub API calls are now logged and actually cached for 15
+  minutes. The failure was cached as `false`, which `get_transient()` can't
+  tell apart from "nothing cached", so every check retried and failed
+  silently.
+- When the installed version is newer than GitHub's latest release (e.g. a
+  hand-installed pre-release), the Plugins screen no longer lists it
+  against the older release's version and package.
 
 ## [1.4.2]
 
