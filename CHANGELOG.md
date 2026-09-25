@@ -5,6 +5,14 @@ All notable changes to this plugin are documented here. This project follows
 
 ## [Unreleased]
 
+### Fixed
+- Web session linking no longer calls `ap3c.track()` before Ortto's
+  tracking code has been initialised. `track()` exists as soon as `app.js`
+  loads, but until `ap3c.init()` runs it posts to
+  `undefined-/events/page-event` (relative to the current page), which
+  404s and logs an XHR error in the console on every page with a form. The
+  script now waits for `init()` to have run, for up to 15 seconds.
+
 ## [1.5.0]
 
 ### Added
