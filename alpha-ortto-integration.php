@@ -42,9 +42,19 @@ Alpha_Ortto_Account_SF_ID_Updater::init();
  * stored in the `alpha_ortto_updates_key` option to raise the GitHub API rate
  * limit or support a private repo.
  */
-add_action( 'admin_init', 'alpha_ortto_init_updater' );
+add_action( 'init', 'alpha_ortto_init_updater' );
 
 function alpha_ortto_init_updater() {
+	// Update checks run from wp-admin, but also from WP-Cron's twice-daily
+	// wp_update_plugins event and `wp plugin update`, neither of which fires
+	// admin_init. Without the updater registered there, every scheduled
+	// check rewrote the update_plugins transient without this plugin's
+	// entry, so an available update would show up after an admin visit and
+	// then silently disappear again. Front-end requests never check.
+	if ( ! is_admin() && ! wp_doing_cron() && ! ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+		return;
+	}
+
 	require_once __DIR__ . '/includes/class-alpha-ortto-updater.php';
 
 	$updater = new Alpha_Ortto_Updater( __FILE__ );
